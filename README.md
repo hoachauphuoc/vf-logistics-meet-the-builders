@@ -854,13 +854,13 @@ checked the endpoint — worth knowing.
 **`ThinkingConfig` field is `thinking_budget`, not `thinking_budget_tokens`.**
 The wrong name raises a pydantic validation error *before* any network call, so
 the endpoint failed in ~3 ms. That latency in the Cloud Run request log is the
-tell: a model failure would have taken seconds. We found the real field with
+tell: a model failure would have taken seconds. I found the real field with
 `python -c "import google.genai.types as t; print(list(t.ThinkingConfig.model_fields))"`.
 
 **Cloud Build source deploys need three separate grants.** The default compute
 service account needs `storage.objectAdmin` (read the uploaded source zip),
 `artifactregistry.writer` (push the image) and `logging.logWriter` (or build
-logs vanish, which is how we ended up debugging a "FAILURE" build with no log
+logs vanish, which is how I ended up debugging a "FAILURE" build with no log
 output at all). A build whose docker step reports `SUCCESS` but produces no
 entry under `results.images` has failed at push, not at build.
 
