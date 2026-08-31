@@ -165,6 +165,27 @@ The difference between the two is whether we can vouch for the counterparty from
 our own records, which is the only basis on which a machine should be releasing
 cargo unsupervised.
 
+Seven sample bills of lading are committed, each isolating one mechanism, and one
+command runs all of them against the deployed service and checks the result
+against the table in the README:
+
+```bash
+python scripts/test_documents.py 3
+```
+
+The most useful comparison is a matched set of three whose paperwork is of equal
+quality and differs only in the counterparty: a shipper on file releases itself, a
+shipper we have never traded with waits, and a shipper presenting *someone else's*
+tax number is treated as worse than unknown rather than better. A fourth is
+low-risk and compliance-clear but priced above the delegated ceiling, so the
+boundary refuses the release and a human gets it — the governance claim,
+demonstrable in one upload.
+
+One of the seven is documented with two acceptable outcomes rather than one,
+because it was measured landing on both sides of the `score_disputed` threshold.
+Pinning it to a single state would have produced a submission that disagrees with
+a judge's own run.
+
 ### Scale-to-zero without losing work
 
 The service runs with `WORKER_MODE=ondemand` and `--min-instances=0`. No

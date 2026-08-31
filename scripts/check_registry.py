@@ -9,14 +9,19 @@ reported as a mismatch rather than waved through, and neither the mismatch nor
 the unknown path ever writes trading history that nobody vouched for.
 
 There is no pytest in this project's requirements, deliberately - this runs with
-plain `python tools_check_registry.py` and exits non-zero on failure.
+plain `python scripts/check_registry.py` and exits non-zero on failure.
 """
 
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-import shipper_registry as sr
+# The module under test lives at the repository root, which is not on the path
+# when this file is run directly from scripts/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import shipper_registry as sr  # noqa: E402
 
 # (tax id, company) -> expected status.
 CASES: list[tuple[tuple[object, object], str]] = [

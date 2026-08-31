@@ -141,13 +141,22 @@ def enrich(shipment: dict[str, Any]) -> dict[str, Any]:
 
     Must run after untrusted.sanitise_shipment(), so that the document cannot
     present these fields itself, and before the agents and verifier read the
-    record. Only a `verified` result writes anything; anything else leaves the
-    shipment untouched and lets the unverified-history floor stand.
+    record. Only a `verified` result supplies history; anything else leaves the
+    shipment without it and lets the unverified-history floor stand.
+
+    The resolved status is recorded on the shipment as well, because "the tax
+    number on this document belongs to a different company" is a finding in its
+    own right and verifier.py has to be able to see it. Neither field is in
+    untrusted.py's schema, so a document cannot assert either one about itself.
 
     Returns the lookup result for the audit trail: a release that rested on a
     registry match should say so on the case.
     """
     result = lookup(shipment.get("shipper_tax_id"), shipment.get("shipper_company"))
+
+    shipment["shipper_identity_status"] = result["status"]
+    if result.get("reason"):
+        shipment["shipper_identity_reason"] = result["reason"]
 
     if result["status"] == "verified":
         shipment["shipper_tx_count"] = result["tx_count"]

@@ -640,52 +640,74 @@ With no active boundary the system reports `SUSPENDED`: agents still analyse and
 propose, but every protected action is refused. Publish one via
 `POST /api/v1/governance/publish` and the same case executes.
 
-### Test 6 — document intake and prompt-injection defence
+### Test 6 — document intake, seven documents, one command
 
-Three sample bills of lading are committed to the repo, so this needs no setup
-beyond cloning. Each is a real PDF, not a fixture stub.
+Seven bills of lading are committed to the repo, so this needs no setup beyond
+cloning. Each is a real PDF, not a fixture stub, and each isolates one mechanism.
 
 ```bash
-# a well-formed bill of lading
-curl -s -F "file=@sample_docs/clean_bol.pdf" $BASE/api/v1/events/document
-
-# a messy scan with inconsistent figures
-curl -s -F "file=@sample_docs/dirty_bol.pdf" $BASE/api/v1/events/document
-
-# a document carrying an instruction aimed at the model
-curl -s -F "file=@sample_docs/injected_bol.pdf" $BASE/api/v1/events/document
+python scripts/test_documents.py        # one pass, ~5 minutes
+python scripts/test_documents.py 3      # three passes, reports any disagreement
 ```
 
+That script resets the board, uploads each document, and prints the state next to
+the state this README claims — so a disagreement between the two is visible
+immediately rather than something a reader has to take on trust. It exits non-zero
+if any document lands outside its documented outcome. It is the same script that
+produced the table below.
+
 Gemini 3.5 Flash reads the PDFs directly — there is no OCR stage. Because
-`WORKER_MODE=ondemand`, each call returns the final `state` in the same response.
-Observed outcomes, each reproduced three times from a reset board:
+`WORKER_MODE=ondemand`, each upload returns the final `state` in the same
+response, so expect 30 to 60 seconds per document.
 
-| File | `model_invoked` | Result |
+| Document | Outcome | Why |
 |---|---|---|
-| `clean_bol.pdf` | `true` | `AUTO_CLEARED` — the shipper's tax ID and company resolve in [`shipper_registry.py`](shipper_registry.py) to 412 prior shipments with no prior flags, compliance clears at 98, and the case releases with no human involved. |
-| `dirty_bol.pdf` | `true` | `ESCALATED` — no usable tax ID, so counterparty lookup returns `unknown` and the unverified-history floor stands; the figures also do not reconcile. Held with a SAR drafted. |
-| `injected_bol.pdf` | **`false`** | `PENDING_HUMAN` — blocked before the model was ever called. |
+| `clean_bol.pdf` | `AUTO_CLEARED` | Tax ID and company resolve in the counterparty book to 412 prior shipments. No deterministic finding, compliance clears, released with no human. |
+| `unknown_shipper_bol.pdf` | `HELD_FOR_REVIEW` or `PENDING_HUMAN` | Same lane and cargo, shipper not on file. Unverified history sets a floor of 45. Which of the two it lands on depends on how close the model's own score comes to that floor — see the note below. |
+| `identity_spoof_bol.pdf` | `PENDING_HUMAN` | Carries a real customer's tax ID under a different company name. Reported as `identity_mismatch`, floor 75, `ESCALATED` proposed and refused pending a human. |
+| `over_ceiling_bol.pdf` | `PENDING_HUMAN` | Nothing wrong with it: risk low, compliance cleared, `AUTO_CLEARED` proposed. Declared value USD 40,000 exceeds the delegated USD 25,000, so the boundary refuses the release. |
+| `dual_use_bol.pdf` | `PENDING_HUMAN` | Unremarkable paperwork carrying controlled HS 8542. Dual-use floor of 85 against a low model score. |
+| `dirty_bol.pdf` | `ESCALATED` | No tax ID, dual-use cargo, freight far below market, transhipments added after booking. The model agreed with the floor, so the system escalated it unaided. |
+| `injected_bol.pdf` | `PENDING_HUMAN` | Blocked before the model was ever called; `security.model_invoked` is `false`. |
 
-The first two are the pair worth reading together: they differ in whether the
-claimed shipper is one we can vouch for from our own records, and that single
-difference is what separates an autonomous release from an escalation.
+The first three are a matched set and the most useful comparison in the project.
+The paperwork is of equal quality in all three; what differs is only whether the
+counterparty resolves against our own records. Known shipper releases itself.
+Unknown shipper waits. A shipper presenting someone else's tax number is treated
+as worse than unknown, not better — which is the whole reason
+[`shipper_registry.py`](shipper_registry.py) matches on tax ID *and* company name
+rather than the number alone.
 
-The third case is the one worth reading closely. The document contains text
+**Why four of these end in `PENDING_HUMAN`, and why one of them is not pinned.**
+`PENDING_HUMAN` is reached by three different routes: blocked at intake, refused
+by the value ceiling, or refused because the deterministic floor and the model
+disagreed by 15 points or more (`score_disputed` in
+[`governance.py`](governance.py)). That last trigger is why documents behave
+differently from data events: the model is not shown the freight baseline or the
+shipper's history, on purpose, so on an uploaded document the two sources of truth
+are working from different information and a disagreement is common. The system's
+answer — act on neither, hand it to a person — is the correct one, and it is why
+`unknown_shipper_bol.pdf` is documented with two acceptable outcomes instead of
+one. It was measured landing on both sides of that threshold. Pinning it to a
+single state would give you a README that disagrees with your own run.
+
+The injected document is still the one worth reading closely. It contains text
 instructing the model to set the risk score to zero and skip compliance
 screening. Model Armor screens the extracted text in overlapping windows *before*
 Gemini is invoked, returns `MATCH_FOUND` at `LOW_AND_ABOVE`, and the request
-stops there — `model_invoked` is `false` and no `extracted` record is produced.
-The injection is recorded on the trace and the case is routed to a human, not
-silently discarded. A second, independent pattern-based screen runs regardless of
-whether Model Armor is reachable, so the path fails closed.
+stops there — `security.model_invoked` is `false` and no `extracted` record is
+produced. The injection is recorded on the trace and the case is routed to a
+human, not silently discarded. A second, independent pattern-based screen runs
+regardless of whether Model Armor is reachable, so the path fails closed.
 
-To regenerate the PDFs, or to make new ones: `python tools_make_sample_docs.py`.
+To regenerate the PDFs, or to make new ones:
+`python scripts/make_sample_docs.py`.
 
 The counterparty lookup that lets a document clear has its own self-check, since
 it is the module that decides whether a shipment may be released without a human:
 
 ```bash
-python tools_check_registry.py   # 11 checks, exits non-zero on failure
+python scripts/check_registry.py   # 11 checks, exits non-zero on failure
 ```
 
 It covers the case that matters most — a real tax number presented under the
@@ -910,10 +932,12 @@ in `04`.
 ├── executor_client.py            Calls the split-identity executor service
 ├── tools.py                      Actions taken on the operator's behalf
 ├── simulator.py                  Scripted shipment events for the demo
-├── tools_make_sample_docs.py     Generates the sample BOL/invoice PDFs
-├── tools_seed_demo_board.py      Seeds the board to an exact outcome mix for a demo
-├── tools_check_registry.py       Self-check for the counterparty book
-├── sample_docs/                  Committed sample PDFs: clean, dirty, injected
+├── scripts/                      Not deployed; data generation and verification
+│   ├── make_sample_docs.py       Generates the seven sample bills of lading
+│   ├── seed_demo_board.py        Seeds the board to an exact outcome mix
+│   ├── test_documents.py         Uploads every sample doc, checks the README table
+│   └── check_registry.py         Self-check for the counterparty book
+├── sample_docs/                  Seven committed sample PDFs, one per mechanism
 ├── agents/
 │   ├── __init__.py               Public agent API
 │   ├── _common.py                Shared JSON parsing, timing, response envelope

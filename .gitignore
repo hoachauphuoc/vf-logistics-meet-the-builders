@@ -29,13 +29,13 @@ Thumbs.db
 htmlcov/
 .coverage
 
-# Personal recording notes, not part of the submission
+# Demo-video production: the narration script, the Text-to-Speech tooling that
+# renders the voiceover, and its output. The submission shows the finished video;
+# how it was assembled is not part of the project and would only invite a reader
+# to look for a connection to the service that does not exist.
 docs/video-script.txt
-
-# Demo-video production tooling and its output. Useful locally, but it builds a
-# narration track rather than any part of the service, so it stays out of the repo.
 tools_build_narration.py
 build/
 
-# Throwaway probes and scratch files
+# Scratch probes. Anything named tmp_* is a throwaway and must never be committed.
 tmp_*

@@ -313,6 +313,28 @@ def check_routing(shipment: dict[str, Any]) -> list[dict[str, Any]]:
 def check_counterparty(shipment: dict[str, Any]) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
 
+    # Set by shipper_registry.enrich() when the tax ID on the document is one we
+    # hold, but under a different company name. That is not a clerical problem:
+    # it is paperwork presenting another company's tax number, which is the
+    # cheapest way to try to inherit a good counterparty's history. The floor sits
+    # above INVESTIGATE_AT deliberately, so it escalates rather than queueing -
+    # otherwise "unknown shipper" and "shipper impersonating a known one" would
+    # carry the same consequence, and the second is strictly worse.
+    #
+    # Only the document path is enriched today, so this only fires there. A data
+    # event supplies its history directly from an internal system, which is a
+    # different trust question and not one this check answers.
+    if str(shipment.get("shipper_identity_status") or "") == "identity_mismatch":
+        findings.append({
+            "code": "SHIPPER_IDENTITY_MISMATCH",
+            "severity": "HIGH",
+            "floor": 75,
+            "detail": str(
+                shipment.get("shipper_identity_reason")
+                or "The shipper tax ID on file belongs to a different company."
+            ),
+        })
+
     tx = _num(shipment.get("shipper_tx_count"))
     if tx is None:
         # Deliberate: `shipper_tx_count` is excluded from the document schema in

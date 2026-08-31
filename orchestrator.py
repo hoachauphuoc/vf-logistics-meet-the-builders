@@ -495,7 +495,7 @@ async def _decide(
 
     receipts = []
     denials = []
-    for name, kwargs in actions:
+    for index, (name, kwargs) in enumerate(actions):
         receipt = await governance.execute(name, case, **kwargs)
         receipts.append(receipt)
         if receipt.get("status") == "denied":
@@ -504,6 +504,24 @@ async def _decide(
                 "reason": receipt.get("detail", {}).get("gate_reason"),
                 "human_triggers": receipt.get("detail", {}).get("human_triggers", []),
             })
+            # Stop the pack here instead of running the rest of it. Every action
+            # after the substantive one is conditional on the outcome becoming
+            # official, and publish_decision is always last - so letting the loop
+            # continue announced `outcome: AUTO_CLEARED` on the case-decisions
+            # topic for a shipment the boundary had just refused to release and
+            # which was on its way to a human. A subscriber had no way to tell
+            # that apart from a real release. The remaining actions are recorded
+            # as skipped rather than dropped, so the trace says what was not
+            # attempted and why.
+            for skipped, _ in actions[index + 1:]:
+                receipts.append({
+                    "action": skipped,
+                    "case_id": case_id,
+                    "at": utcnow(),
+                    "status": "skipped",
+                    "detail": {"reason": f"not attempted: {name} was denied"},
+                })
+            break
 
     case["actions"].extend(receipts)
 
