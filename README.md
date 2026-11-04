@@ -1,7 +1,7 @@
 # VF Logistics — Autonomous Fraud Detection Agents
 
 **Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
-**Live URL:** https://vf-fraud-detection-304507056252.asia-southeast1.run.app
+**Live URL:** https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
 
 > **Origin of this project.** This repository is a copy of
 > [CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
@@ -400,7 +400,7 @@ Console in the dashboard calls.
 
 ```bash
 curl -s -X POST \
-  https://vf-fraud-detection-304507056252.asia-southeast1.run.app/api/v1/fraud/analyze \
+  https://vf-meet-the-builders-304507056252.asia-southeast1.run.app/api/v1/fraud/analyze \
   -H 'Content-Type: application/json' \
   -d '{
     "shipment_id": "VF-2026-0001",
@@ -577,7 +577,7 @@ Every step below runs against the live service with no setup. Replace `$BASE`
 with your own URL if you deployed your own copy.
 
 ```bash
-BASE=https://vf-fraud-detection-304507056252.asia-southeast1.run.app
+BASE=https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
 ```
 
 ### Test 1 — the service is up and both models are wired

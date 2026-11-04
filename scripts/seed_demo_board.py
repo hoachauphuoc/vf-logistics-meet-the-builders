@@ -51,7 +51,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-BASE = "https://vf-fraud-detection-304507056252.asia-southeast1.run.app"
+BASE = "https://vf-meet-the-builders-304507056252.asia-southeast1.run.app"
 EVENT_URL = f"{BASE}/api/v1/events/shipment"
 STATE_URL = f"{BASE}/api/v1/orchestrator/state"
 

@@ -34,7 +34,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-BASE = "https://vf-fraud-detection-304507056252.asia-southeast1.run.app"
+BASE = "https://vf-meet-the-builders-304507056252.asia-southeast1.run.app"
 
 # Resolved from this file, not the working directory, so the script runs the same
 # from the repository root or from inside scripts/.

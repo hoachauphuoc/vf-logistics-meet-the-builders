@@ -15,7 +15,7 @@ published Delegation Boundary.
 
 ## Links
 
-- Live service: https://vf-fraud-detection-304507056252.asia-southeast1.run.app
+- Live service: https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
 - Code: https://github.com/hoachauphuoc/vf-logistics-meet-the-builders
 - Architecture diagram: `docs/architecture.png`
 - Screenshots: `docs/screenshots/`
