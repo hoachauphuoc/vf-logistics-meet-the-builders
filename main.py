@@ -244,9 +244,10 @@ async def investigation_report():
 
 # ============== AUTONOMOUS ORCHESTRATION ==============
 #
-# These endpoints are the Taskmaster surface. Nothing here waits for an agent:
-# ingestion returns as soon as the case is durably recorded, and the background
-# worker drives the multi-step workflow to completion on its own.
+# These endpoints drive the workflow. Under WORKER_MODE=poll ingestion returns as
+# soon as the case is durably recorded and the background worker carries it on.
+# Under WORKER_MODE=ondemand, the deployed setting, the request handlers advance
+# the case themselves.
 
 @app.route("/api/v1/events/shipment", methods=["POST"])
 def event_shipment():
@@ -275,8 +276,8 @@ def event_shipment():
         case = _on_worker(orchestrator.ingest_shipment(shipment))
 
         # In request-driven mode this delivery is the only wake-up we get, so
-        # the workflow is run to completion before responding. The Pub/Sub
-        # subscription must therefore carry a generous ack deadline; see README.
+        # the workflow is run to completion before responding. A Pub/Sub push
+        # subscription, if one is added, must carry a generous ack deadline.
         if orchestrator.WORKER_MODE != "poll":
             case = _on_worker(orchestrator.advance_until_terminal(case))
 
@@ -360,8 +361,9 @@ def orchestrator_tick():
     """
     Advance the pipeline one step per in-flight case.
 
-    The background loop already does this continuously; this endpoint exists so
-    Cloud Scheduler can drive the pipeline if CPU throttling is ever left on.
+    Under WORKER_MODE=poll the background loop already does this continuously;
+    this endpoint exists so a script or Cloud Scheduler can drive the pipeline
+    otherwise.
     """
     try:
         moved = _on_worker(orchestrator.tick())
@@ -668,14 +670,15 @@ def review_document(case_id: str):
 
 # ============== EXECUTOR IDENTITY ==============
 #
-# Served by the second Cloud Run service, which runs under a service account
-# holding `pubsub.publisher` that the analysis service does not have. The
-# analysis service reaches this endpoint with a Google-issued OIDC token, and the
-# executor service is deployed with --no-allow-unauthenticated, so nothing
-# without `run.invoker` on it can call in.
+# Meant for the second Cloud Run service, which runs under its own service
+# account. The analysis service would reach this endpoint with a Google-issued
+# OIDC token, and the executor service is deployed with
+# --no-allow-unauthenticated, so nothing without `run.invoker` on it can call in
+# there.
 #
-# The separation is enforced by IAM, not by this file. If the analysis runtime
-# were subverted and tried to publish directly, Google refuses it.
+# Not in use today: EXECUTOR_URL is unset on the analysis service, which publishes
+# directly and holds pubsub.publisher on case-decisions. IAM separates the two
+# identities only once that grant is removed as well. See executor_client.py.
 
 @app.route("/internal/execute", methods=["POST"])
 def internal_execute():
@@ -711,10 +714,12 @@ def event_storage():
     """
     Cloud Storage object-finalize sink.
 
-    Drop a PDF into the bucket and it is processed with nobody clicking anything.
-    This is the equivalent of a stage with change tracking on it: the bucket
-    notification publishes to Pub/Sub, Pub/Sub pushes here, and the same document
-    pipeline runs.
+    With a push subscription on the notification topic, a PDF dropped into the
+    bucket is processed with nobody clicking anything. This is the equivalent of
+    a stage with change tracking on it: the bucket notification publishes to
+    Pub/Sub, Pub/Sub pushes here, and the same document pipeline runs. No such
+    subscription exists in the deployed project yet, so nothing reaches this
+    endpoint there; /api/v1/ingest/bucket-sweep is the route in.
 
     Eventarc would be the more direct route but is not enabled on this project;
     bucket notifications need only the storage and pubsub APIs, which are.

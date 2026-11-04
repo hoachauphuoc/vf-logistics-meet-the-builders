@@ -1,16 +1,18 @@
 """
 Cross-identity call from the analysis runtime to the executor runtime.
 
-The analysis service account holds `aiplatform.user` and can read and write
-Firestore, but it deliberately does **not** hold `pubsub.publisher`. So when the
-workflow decides a decision should be published to the outside world, it cannot
-do that itself. It has to ask the executor service, which runs under a different
-service account that does hold that permission.
+The design: the analysis service account holds `aiplatform.user` and can read and
+write Firestore, but not `pubsub.publisher`, so a decision can only reach the
+outside world by asking the executor service, which runs under a different
+service account. If the analysis runtime were subverted - by a prompt injection
+in a document, or by a bug - and tried to publish directly, Google IAM would
+refuse it, and the boundary would be enforced by the platform rather than by this
+codebase behaving well.
 
-This is the part of the design that is not a promise. If the analysis runtime
-were subverted - by a prompt injection in a document, or by a bug - and tried to
-publish directly, Google IAM refuses it. The boundary is enforced by the platform
-rather than by this codebase behaving well.
+That is not how the project is deployed today. `EXECUTOR_URL` is unset, so this
+module is idle and `publish_decision` runs directly under the analysis identity,
+which holds `roles/pubsub.publisher` on the `case-decisions` topic. Putting the
+design in force takes both steps: set `EXECUTOR_URL` and remove that grant.
 
 The call itself is authenticated with a Google-issued OIDC identity token, and
 the executor service is deployed with `--no-allow-unauthenticated`, so it is not
@@ -26,7 +28,7 @@ from typing import Any
 import httpx
 
 # Set on the analysis service only. Empty means "no executor configured", in
-# which case protected egress simply does not happen and says so.
+# which case tools.publish_decision publishes directly under the running identity.
 EXECUTOR_URL = os.getenv("EXECUTOR_URL", "").strip().rstrip("/")
 
 METADATA_TOKEN_URL = (

@@ -63,12 +63,12 @@
     <rect x="16" y="16" width="260" height="190" rx="13"
           fill="#141d3a" stroke="#2c3a5e" stroke-width="1.5"/>
     <text x="38" y="43" fill="#96a2c0" font-size="11" letter-spacing="1.4">EVENT SOURCES</text>
-    <text x="38" y="69" fill="#e8edf9" font-size="13" font-weight="600">Pub/Sub shipment-events</text>
-    <text x="38" y="88" fill="#8f9dbd" font-size="11.5">push envelope or bare shipment</text>
+    <text x="38" y="69" fill="#e8edf9" font-size="13" font-weight="600">Shipment event POST</text>
+    <text x="38" y="88" fill="#8f9dbd" font-size="11.5">/api/v1/events/shipment &middot; JSON body</text>
     <text x="38" y="116" fill="#e8edf9" font-size="13" font-weight="600">Document upload</text>
     <text x="38" y="135" fill="#8f9dbd" font-size="11.5">bill of lading / invoice, PDF or scan</text>
     <text x="38" y="163" fill="#e8edf9" font-size="13" font-weight="600">Cloud Storage stage</text>
-    <text x="38" y="182" fill="#8f9dbd" font-size="11.5">batch drop, ingested on tick</text>
+    <text x="38" y="182" fill="#8f9dbd" font-size="11.5">batch drop, ingested on bucket-sweep</text>
     <text x="38" y="199" fill="#6f7d9c" font-size="11">idempotent per shipment_id</text>
 
     <rect x="16" y="222" width="260" height="92" rx="13"
@@ -80,13 +80,14 @@
 
     <rect x="16" y="330" width="260" height="180" rx="13"
           fill="#141d3a" stroke="#2c3a5e" stroke-width="1.5"/>
-    <text x="38" y="357" fill="#96a2c0" font-size="11" letter-spacing="1.4">IAM &middot; ANALYSIS IDENTITY</text>
-    <text x="38" y="383" fill="#c3ccdf" font-size="12">roles/aiplatform.user</text>
-    <text x="38" y="405" fill="#c3ccdf" font-size="12">roles/datastore.user</text>
-    <text x="38" y="427" fill="#c3ccdf" font-size="12">roles/storage.objectAdmin</text>
-    <text x="38" y="453" fill="#ea6a5e" font-size="12">no pubsub.publisher</text>
-    <text x="38" y="472" fill="#8f9dbd" font-size="11">this identity can reason about a shipment</text>
-    <text x="38" y="489" fill="#8f9dbd" font-size="11">but cannot move one</text>
+    <text x="38" y="357" fill="#96a2c0" font-size="11" letter-spacing="1.4">IAM &middot; vf-analysis IDENTITY</text>
+    <text x="38" y="381" fill="#c3ccdf" font-size="12">roles/aiplatform.user</text>
+    <text x="38" y="400" fill="#c3ccdf" font-size="12">roles/datastore.user</text>
+    <text x="38" y="419" fill="#c3ccdf" font-size="12">roles/storage.objectAdmin</text>
+    <text x="38" y="438" fill="#c3ccdf" font-size="12">roles/modelarmor.user</text>
+    <text x="38" y="457" fill="#c3ccdf" font-size="12">roles/logging.logWriter</text>
+    <text x="38" y="476" fill="#c3ccdf" font-size="11.5">roles/pubsub.publisher on case-decisions</text>
+    <text x="38" y="497" fill="#8f9dbd" font-size="11">runs the models and every action today</text>
 
     <path d="M276,111 L324,111" stroke="#5b6b93" stroke-width="2" fill="none" marker-end="url(#arw)"/>
     <path d="M276,268 L300,268 L300,145 L324,145" stroke="#5b6b93" stroke-width="1.8" fill="none" marker-end="url(#arw)"/>
@@ -100,8 +101,8 @@
 
     <rect x="346" y="100" width="532" height="68" rx="10"
           fill="#101a36" stroke="#2c3a5e" stroke-width="1.3"/>
-    <text x="366" y="124" fill="#e8edf9" font-size="13" font-weight="600">gunicorn &rarr; Flask (main.py) &nbsp;+&nbsp; orchestrator.py worker</text>
-    <text x="366" y="144" fill="#8f9dbd" font-size="11.5">lease-based claim &middot; one step per tick &middot; state persisted before the next step</text>
+    <text x="366" y="124" fill="#e8edf9" font-size="13" font-weight="600">gunicorn &rarr; Flask (main.py) &nbsp;+&nbsp; orchestrator.py</text>
+    <text x="366" y="144" fill="#8f9dbd" font-size="11.5">request handlers advance each case &middot; lease-based claim &middot; state persisted before the next step</text>
     <text x="366" y="161" fill="#6f7d9c" font-size="11">5s / 10s / 20s backoff &rarr; DEAD_LETTER after 3 attempts</text>
 
     <path d="M612,168 L612,190" stroke="#5b6b93" stroke-width="2" fill="none" marker-end="url(#arw)"/>
@@ -110,9 +111,9 @@
           fill="#1e1a2e" stroke="#6b4fa8" stroke-width="1.4"/>
     <text x="366" y="217" fill="#b39ddb" font-size="11" letter-spacing="1.2">UNTRUSTED INPUT GATE &mdash; treat the document as the attacker</text>
     <text x="366" y="240" fill="#e8edf9" font-size="12.5" font-weight="600">untrusted.py</text>
-    <text x="458" y="240" fill="#93a1c1" font-size="11.5">schema whitelist &middot; rejects risk_score / decision / state</text>
+    <text x="458" y="240" fill="#93a1c1" font-size="11.5">schema whitelist &middot; 14 injection patterns &middot; rejects risk_score / decision / state</text>
     <text x="366" y="263" fill="#e8edf9" font-size="12.5" font-weight="600">model_armor.py</text>
-    <text x="468" y="263" fill="#93a1c1" font-size="11.5">400-char windows &middot; 120 overlap &middot; 14 patterns</text>
+    <text x="468" y="263" fill="#93a1c1" font-size="11.5">400-char windows &middot; 120 overlap</text>
     <text x="366" y="278" fill="#8d7bb8" font-size="11">a transcription may fill fields, never verdict fields</text>
 
     <path d="M612,282 L612,304" stroke="#5b6b93" stroke-width="2" fill="none" marker-end="url(#arw)"/>
@@ -162,8 +163,8 @@
     <text x="1214" y="389" fill="#6f7d9c" font-size="11">regional endpoints return 404</text>
 
     <text x="962" y="437" fill="#93a1c1" font-size="11.5">response_mime_type: <tspan fill="#e8edf9">application/json</tspan> &mdash; a prose reply is a bug, not a variant</text>
-    <text x="962" y="461" fill="#93a1c1" font-size="11.5">model id pinned in code, not in an env var</text>
-    <text x="962" y="480" fill="#6f7d9c" font-size="11">a careless deploy cannot silently downgrade the model</text>
+    <text x="962" y="461" fill="#93a1c1" font-size="11.5">GEMINI_MODEL or the dashboard sets intake, fraud and compliance</text>
+    <text x="962" y="480" fill="#6f7d9c" font-size="11">investigation is pinned in code to Flash-Lite</text>
     <text x="962" y="499" fill="#6f7d9c" font-size="11">every hop records its own latency and model id on the case</text>
 
     <!-- ==================== FIELD NOTES ==================== -->
@@ -197,7 +198,7 @@
     <rect x="40" y="574" width="410" height="112" rx="10" fill="#191a2c" stroke="#4a4530" stroke-width="1.2"/>
     <text x="60" y="597" fill="#e8edf9" font-size="13" font-weight="700">Delegation Boundary &nbsp;v1 &middot; v2 &middot; v3 &hellip;</text>
     <text x="60" y="617" fill="#93a1c1" font-size="11.5">published by a named human, machine-readable JSON</text>
-    <text x="60" y="636" fill="#93a1c1" font-size="11.5">allowed_actions &middot; auto_clear_max_risk &middot; cargo value caps</text>
+    <text x="60" y="636" fill="#93a1c1" font-size="11.5">allowed_actions &middot; forbidden_destinations &middot; max_declared_value_usd</text>
     <text x="60" y="655" fill="#93a1c1" font-size="11.5">re-publishing supersedes the version before it</text>
     <text x="60" y="676" fill="#c9a227" font-size="11">authority is granted by publication, not earned by reasoning well</text>
 
@@ -208,30 +209,28 @@
     <text x="498" y="617" fill="#93a1c1" font-size="11.5">no active boundary &rArr; state <tspan fill="#ea6a5e">SUSPENDED</tspan></text>
     <text x="498" y="636" fill="#93a1c1" font-size="11.5">analysis keeps running, every protected action is refused</text>
     <text x="498" y="655" fill="#93a1c1" font-size="11.5">the boundary version is stamped on each executed action</text>
-    <text x="498" y="676" fill="#c9a227" font-size="11">a past decision replays against the policy in force at the time</text>
+    <text x="498" y="676" fill="#c9a227" font-size="11">a past decision can be reconstructed against the policy in force then</text>
 
-    <!-- ==================== EXECUTION IDENTITY ==================== -->
+    <!-- ==================== PROTECTED ACTIONS ==================== -->
     <path d="M900,604 L940,604" stroke="#34a853" stroke-width="2.2" fill="none" marker-end="url(#arwG)"/>
 
     <rect x="940" y="534" width="504" height="170" rx="14"
           fill="url(#gExec)" stroke="#34a853" stroke-width="1.8"/>
-    <text x="962" y="561" fill="#7fd6a0" font-size="11" letter-spacing="1.3">CLOUD RUN &middot; EXECUTION IDENTITY</text>
-    <text x="962" y="584" fill="#e8edf9" font-size="15" font-weight="700">vf-executor</text>
-    <text x="1064" y="584" fill="#8f9dbd" font-size="11.5">reachable only through the execution gate</text>
-    <text x="962" y="603" fill="#ea6a5e" font-size="11.5">no aiplatform.user &mdash; this identity can act, and never sees a model</text>
+    <text x="962" y="561" fill="#7fd6a0" font-size="11" letter-spacing="1.3">PROTECTED ACTIONS &middot; tools.py &middot; IN THE REASONING SERVICE</text>
+    <text x="962" y="582" fill="#c3ccdf" font-size="12">release_shipment &middot; hold_shipment &middot; assign_analyst</text>
+    <text x="962" y="600" fill="#c3ccdf" font-size="12">draft_sar &middot; notify_webhook &middot; publish_decision</text>
+    <text x="962" y="618" fill="#8f9dbd" font-size="11.5">each writes a receipt to the audit log; no ERP or WMS is connected</text>
 
-    <rect x="962" y="614" width="460" height="76" rx="9" fill="#101f19" stroke="#2a4b39" stroke-width="1.1"/>
-    <text x="982" y="634" fill="#a8d8bd" font-size="11" letter-spacing="1">PROTECTED ACTIONS &middot; tools.py</text>
-    <text x="982" y="655" fill="#c3ccdf" font-size="11.5">release_shipment &middot; hold_shipment &middot; assign_analyst</text>
-    <text x="982" y="673" fill="#c3ccdf" font-size="11.5">draft_sar &middot; notify_webhook &middot; publish_decision</text>
-    <text x="1274" y="655" fill="#8f9dbd" font-size="11">each writes a receipt</text>
-    <text x="1274" y="673" fill="#6f7d9c" font-size="11">cargo really moves</text>
+    <rect x="962" y="628" width="460" height="66" rx="9" fill="#101f19" stroke="#5b7a68" stroke-width="1.2" stroke-dasharray="6 4"/>
+    <text x="982" y="647" fill="#e8edf9" font-size="12.5" font-weight="700">vf-executor <tspan fill="#a8d8bd" font-size="11.5" font-weight="400">&mdash; deployed, not connected</tspan></text>
+    <text x="982" y="664" fill="#8f9dbd" font-size="11">EXECUTOR_URL is unset, so nothing calls it. It would take over</text>
+    <text x="982" y="680" fill="#8f9dbd" font-size="11">publish_decision only, under its own service account.</text>
 
     <!-- ==================== STATE ROW ==================== -->
     <rect x="16" y="724" width="468" height="102" rx="12"
           fill="#141d3a" stroke="#2c3a5e" stroke-width="1.5"/>
     <text x="38" y="750" fill="#8fb4ff" font-size="11" letter-spacing="1.3">FIRESTORE &middot; native mode</text>
-    <text x="38" y="774" fill="#c3ccdf" font-size="12">cases &middot; events &middot; audit_log &middot; boundaries &middot; reviews</text>
+    <text x="38" y="774" fill="#c3ccdf" font-size="12">cases (with reviews) &middot; events &middot; audit_log &middot; delegation_boundaries</text>
     <text x="38" y="795" fill="#8f9dbd" font-size="11.5">a case survives the instance that was working on it</text>
     <text x="38" y="814" fill="#6f7d9c" font-size="11">no composite index setup, so nothing to forget at deploy time</text>
 
@@ -245,9 +244,9 @@
     <rect x="992" y="724" width="452" height="102" rx="12"
           fill="#141d3a" stroke="#2c3a5e" stroke-width="1.5"/>
     <text x="1014" y="750" fill="#8fb4ff" font-size="11" letter-spacing="1.3">PUB/SUB &middot; outbound</text>
-    <text x="1014" y="774" fill="#c3ccdf" font-size="12">case-decisions &rarr; ERP / WMS / billing</text>
-    <text x="1014" y="795" fill="#8f9dbd" font-size="11.5">only terminal decisions fan out downstream</text>
-    <text x="1014" y="814" fill="#6f7d9c" font-size="11">published by the executor, never by the reasoning service</text>
+    <text x="1014" y="774" fill="#c3ccdf" font-size="12">case-decisions &middot; terminal decisions only</text>
+    <text x="1014" y="795" fill="#8f9dbd" font-size="11.5">published by the reasoning service (vf-analysis)</text>
+    <text x="1014" y="814" fill="#6f7d9c" font-size="11">no subscriber yet; ERP / WMS / billing would attach here</text>
 
     <path d="M200,704 L200,724" stroke="#5b6b93" stroke-width="1.8" fill="none" marker-end="url(#arw)"/>
     <path d="M700,704 L700,724" stroke="#5b6b93" stroke-width="1.8" fill="none" marker-end="url(#arw)"/>
@@ -258,7 +257,7 @@
           fill="#1a2340" stroke="#4285f4" stroke-width="1.6"/>
     <text x="38" y="876" fill="#8fb4ff" font-size="11" letter-spacing="1.3">HUMAN &mdash; ONLY FOR CASES THE BOUNDARY DOES NOT COVER</text>
     <text x="38" y="899" fill="#e8edf9" font-size="13" font-weight="600">The review queue shows the original document beside the findings</text>
-    <text x="38" y="920" fill="#93a1c1" font-size="11.5">release &middot; hold &middot; block &mdash; reviewer name and boundary version recorded on the case</text>
+    <text x="38" y="920" fill="#93a1c1" font-size="11.5">release &middot; block &middot; request info &mdash; reviewer name recorded on the case</text>
 
     <rect x="736" y="850" width="708" height="84" rx="12"
           fill="#141d3a" stroke="#2c3a5e" stroke-width="1.5"/>
@@ -270,7 +269,7 @@
   </svg>
 
   <div class="hint">
-    Every box is deployed and exercised in the demo &mdash; nothing here is roadmap.
+    Solid boxes run in the deployed service. The dashed box is deployed but not connected.
     <b>The load-bearing idea:</b> the agent decides what is true, and a published boundary decides what it is allowed to do about it.
   </div>
 </div>

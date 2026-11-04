@@ -87,12 +87,14 @@ them and show what the cost difference actually is. Investigation is pinned in
 code: the hop chosen for being cheap should not be switchable to an expensive
 one by a runtime call or a mistyped environment variable.
 
-The rest is **Cloud Run** for the service and a separate executor, **Firestore**
-for case state, **Pub/Sub** for the work queue, **Cloud Storage** for document
-archival, and **Model Armor** for injection screening. `WORKER_MODE=ondemand`
-advances cases inside the request handler, which lets the service run at
-`--min-instances=0` and scale to zero between judged runs — a hackathon project
-should not bill for idle time.
+The rest is **Cloud Run** for the service, **Firestore** for case state,
+**Pub/Sub** for publishing each terminal decision (nothing subscribes to that
+topic yet), **Cloud Storage** for document archival, and **Model Armor** for
+injection screening. A separate executor service is deployed but not yet
+connected, so every action still runs under the analysis identity.
+`WORKER_MODE=ondemand` advances cases inside the request handler, which lets the
+service run at `--min-instances=0` and scale to zero between judged runs — a
+hackathon project should not bill for idle time.
 
 One piece was added late and turned out to matter more than expected: **every
 case gets a bill of lading a human can read.** An uploaded original is archived

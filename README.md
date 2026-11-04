@@ -17,19 +17,23 @@ walking it through each step. Built 100% on Google Cloud: Gemini 3.5 Flash and
 Gemini 3.5 Flash-Lite on Vertex AI + Cloud Run + Firestore + Pub/Sub +
 Cloud Storage + Model Armor.
 
-A shipment event arrives and nobody touches it again. A background worker scores
-it for fraud, decides on that score whether compliance screening is warranted,
-decides on the screening whether to open a deep investigation, and then acts:
-releasing the shipment, assigning an analyst, or holding the cargo and drafting a
-suspicious activity report for human signature.
+A shipment event arrives and nobody touches it again. Fraud detection and
+compliance screening run on it in parallel, deterministic checks test what they
+claim, and the result decides whether to open a deep investigation. The system
+then acts: releasing the shipment, assigning an analyst, or holding the cargo and
+drafting a suspicious activity report for human signature. Each action is a
+recorded decision with a receipt on the case; no ERP or WMS is connected yet. In
+the deployed configuration the workflow runs inside the request that delivered
+the work, not in an always-on process (see *Why these choices*).
 
 Measured on the deployed service, three shipments with deliberately different
-risk profiles reached three different outcomes in roughly 30 seconds, with the
-injection call returning in 547ms and no further input:
+risk profiles reached three different outcomes in roughly 30 seconds with no
+human input: the injection call returned in 547ms, and the state poll carried the
+cases from there.
 
 | Shipment | Fraud risk | Compliance | Outcome | Actions executed |
 |---|---|---|---|---|
-| Clean garment export | 5/100 | not needed | `AUTO_CLEARED` | released for delivery |
+| Clean garment export | 5/100 | cleared | `AUTO_CLEARED` | released for delivery |
 | Underpriced furniture, thin history | 45–48/100 | cleared | `HELD_FOR_REVIEW` | analyst assigned |
 | Dual-use goods, 11-day-old shell company | 95/100 | review required | `ESCALATED` | held, SAR drafted, compliance notified |
 
@@ -66,7 +70,7 @@ governance control plane:
 
 The first three agents run **Gemini 3.5 Flash**: document intake needs native
 multimodal PDF reading, and fraud and compliance screening are the calls whose
-scores hold or release cargo, so they get the stronger model.
+scores decide whether cargo is held or released, so they get the stronger model.
 
 The investigation agent runs **Gemini 3.5 Flash-Lite**. By the time a case
 reaches it, the fraud and compliance findings already exist — investigation
@@ -87,8 +91,8 @@ server-side, so downstream routing is machine-readable.
 
 This is the part that matters most. Every agent above is a language model, and a
 language model can be mistaken, overconfident, or manipulated by the very
-document it is reading. The pipeline holds and releases physical cargo, so agent
-output is treated as a **claim**, not a finding.
+document it is reading. The pipeline decides whether physical cargo is held or
+released, so agent output is treated as a **claim**, not a finding.
 
 [`verifier.py`](verifier.py) recomputes what can be computed. Freight against
 lane baselines, value per kilo, mandatory-field completeness, HS code validity
@@ -199,7 +203,7 @@ definition — you see them on the board.
                       ▼
       ┌───────────────────────────────────────────┐
       │  Cloud Run  ·  asia-southeast1            │
-      │  vf-fraud-detection                       │
+      │  vf-meet-the-builders                     │
       │                                           │
       │  gunicorn ──► Flask (main.py)             │
       │                 │                         │
@@ -230,44 +234,70 @@ definition — you see them on the board.
 
 See `docs/architecture.png` for the architecture diagram.
 
+### What is connected today
+
+Read from Cloud Run and Pub/Sub on 2026-11-04. The design has more parts than the
+deployed project currently uses, so this table separates the two.
+
+| Part | State |
+|---|---|
+| `vf-meet-the-builders` | Serves the dashboard and API, and runs every agent and every action under the `vf-analysis` service account. |
+| `vf-executor` | Deployed, not connected. `EXECUTOR_URL` is unset on the analysis service, so nothing calls it. |
+| `case-decisions` topic | `publish_decision` publishes to it directly; `vf-analysis` holds `roles/pubsub.publisher` on the topic. It has no subscription, so no downstream system receives the messages yet. |
+| `shipment-events` topic | Exists, with no subscription. Events arrive by `POST /api/v1/events/shipment`. |
+| `shipment-documents` topic | Receives the bucket's `OBJECT_FINALIZE` notifications. It has no subscription, so nothing reaches `/api/v1/events/storage`. Documents placed in the bucket are ingested with `POST /api/v1/ingest/bucket-sweep`. |
+| Cloud Scheduler | Not enabled. `tick` and `drain` work when called, and nothing calls them on a schedule. |
+
+So the identity split is built and deployed but not in force: IAM does not stop
+the analysis identity from publishing. The control running today is the boundary
+check in [`governance.py`](governance.py). Setting `EXECUTOR_URL` would route
+`publish_decision`, and only that action, through `vf-executor`; making the
+separation real would also mean removing the `vf-analysis` publisher grant on the
+topic.
+
 ### The autonomous workflow
 
 ```
-  Pub/Sub shipment-events ---+
-  Scripted simulator      ---+--> POST /api/v1/events/shipment
-                             |            |
-                             |            v
-                             |    Firestore cases (state INGESTED)
-                             |
-     orchestrator.py: asyncio worker loop, runs with no request in flight,
-     claims a case under a lease, performs exactly one step, persists, repeats
-                             |
-       INGESTED --> fraud_detection agent --> risk_score
+  POST /api/v1/events/shipment ---+
+  Scripted simulator           ---+--> Firestore cases (state INGESTED)
+  Document upload              ---+
+                                  |
+     orchestrator.py: claims a case under a lease, performs one step, persists,
+     repeats. Deployed as WORKER_MODE=ondemand, the request that delivered the
+     work drives this; under WORKER_MODE=poll an asyncio loop does.
+                                  |
+       INGESTED --> fraud_detection + compliance agents, in parallel
+                                  |
+                                  v
+       verifier.py: effective risk = max(model risk, deterministic floor)
+                                  |
+          +-- risk < 40, auto-clear permitted,
+          |   compliance not flagged ---------> AUTO_CLEARED
+          |                                       release_shipment()
           |
-          +-- risk < 40 --------------------> AUTO_CLEARED
-          |                                     release_shipment()
+          +-- not flagged, risk < 70 ---------> HELD_FOR_REVIEW
+          |                                       assign_analyst()
           |
-          +-- risk >= 40 --> compliance agent
+          +-- BLOCKED / REVIEW_REQUIRED, or risk >= 70
                     |
-                    +-- cleared, risk < 70 --> HELD_FOR_REVIEW
-                    |                            assign_analyst()
+                    v
+           investigation agent (thinking_budget 8000)
                     |
-                    +-- BLOCKED / REVIEW_REQUIRED, or risk >= 70
-                              |
-                              v
-                     investigation agent (thinking_budget 8000)
-                              |
-                              v
-                           ESCALATED
-                             hold_shipment()
-                             draft_sar()
-                             notify_webhook()
-                             assign_analyst()
+                    v
+                 ESCALATED
+                   hold_shipment()
+                   draft_sar()
+                   notify_webhook()
+                   assign_analyst()
+
+       Every action passes the execution gate first; a refused action sends
+       the case to PENDING_HUMAN.
 
        Any step failing 3 times, with 5s/10s/20s backoff --> DEAD_LETTER
 
-       Terminal decisions are published to Pub/Sub case-decisions for
-       downstream ERP / WMS / billing, and every action lands in audit_log.
+       Terminal decisions are published to Pub/Sub case-decisions, where ERP /
+       WMS / billing would subscribe (none does yet), and every action lands
+       in audit_log.
 ```
 
 Thresholds are environment variables (`FRAUD_CLEAR_BELOW`, `INVESTIGATE_AT`), so
@@ -285,12 +315,13 @@ the routing policy is configuration rather than something buried in code.
 - **`WORKER_MODE=ondemand` with `--min-instances=0`** — Cloud Run freezes CPU
   between requests, which would suspend a background loop the moment a request
   finished. Rather than pay for `--no-cpu-throttling --min-instances=1` around
-  the clock, cases advance *inside* request handlers: the Pub/Sub push, the
-  document upload, and the dashboard's own state poll each carry the pipeline
-  forward a step. The service scales to zero when no shipment exists.
-  `POST /api/v1/orchestrator/tick` and `/drain` are the Cloud Scheduler levers
-  for clearing a backlog unattended, and `WORKER_MODE=poll` still exists for
-  deployments that would rather pay for a true always-on loop.
+  the clock, cases advance *inside* request handlers: the shipment event POST and
+  the document upload run the case to a terminal state, and the dashboard's own
+  state poll advances anything left over. The service scales to zero when no
+  shipment exists. `POST /api/v1/orchestrator/tick` and `/drain` can clear a
+  backlog from a script or Cloud Scheduler (no scheduler job is configured in the
+  deployed project), and `WORKER_MODE=poll` still exists for deployments that
+  would rather pay for a true always-on loop.
 - **Claims are leases, not locks** — a case claimed by an instance that then
   crashes or is replaced mid-rollout becomes claimable again after
   `CLAIM_LEASE_SECONDS`. An earlier build used permanent claims and stranded
@@ -318,7 +349,7 @@ the routing policy is configuration rather than something buried in code.
 | Input security | **Model Armor** — windowed prompt-injection screening |
 | Compute | **Cloud Run** (source deploy → Cloud Build → Artifact Registry) |
 | State | **Firestore** (Native mode, `asia-southeast1`) — cases, events, audit log |
-| Messaging | **Pub/Sub** — `shipment-events` in, `case-decisions` out |
+| Messaging | **Pub/Sub** — `case-decisions` out, no subscriber yet; `shipment-events` and `shipment-documents` exist but nothing consumes them |
 | Web | Flask + gunicorn, flask-cors |
 | Frontend | Vanilla HTML/CSS/JS, no build step |
 | Runtime | Python 3.11-slim container |
@@ -329,16 +360,16 @@ Google Cloud usage check:
   `gemini-3.5-flash-lite`
 - At least one Google agent framework -> Google GenAI SDK
 - Google Cloud infrastructure -> Cloud Run (compute), Firestore (case state and
-  audit trail), Pub/Sub (event ingestion and decision fan-out)
-- Works asynchronously in the background -> a worker loop inside the container
-  drives cases with no request in flight
+  audit trail), Cloud Storage (document archive), Pub/Sub (decision publishing)
+- Runs without a person stepping it through -> the request that delivers the work
+  runs the case through every step with no further input; `WORKER_MODE=poll` adds
+  a background loop that the deployed service does not use
 - Multi-step workflow -> four agents chained with conditional branching
-- Takes meaningful action -> shipments are held or released, analysts assigned,
-  SAR drafts produced, decisions published
+- Takes meaningful action -> release and hold dispositions recorded, analysts
+  assigned, SAR drafts produced, decisions published
 
-> Firestore and Pub/Sub are used on the live path, not merely pinned.
-> `google-cloud-bigquery` and `google-cloud-storage` remain unused; they are
-> pinned for the historical-baseline work described under *Roadmap*.
+> Firestore, Cloud Storage and Pub/Sub publishing are used on the live path, not
+> merely pinned. BigQuery is not used yet; see *Roadmap*.
 
 ---
 
@@ -346,9 +377,11 @@ Google Cloud usage check:
 
 ### Autonomous orchestration
 
-These are the autonomous-orchestration endpoints. None of them wait for an agent: ingestion
-returns as soon as the case is durably recorded, and the background worker
-carries the workflow to completion on its own.
+These are the autonomous-orchestration endpoints. In the deployed
+`WORKER_MODE=ondemand` configuration, `/api/v1/events/shipment` and
+`/api/v1/events/document` run the case to a terminal state before responding,
+usually 30 to 60 seconds. Under `WORKER_MODE=poll` they return once the case is
+recorded and the background worker carries it on.
 
 | Endpoint | Method | Description |
 |---|---|---|
@@ -356,12 +389,12 @@ carries the workflow to completion on its own.
 | `/api/v1/simulate` | POST | Inject the scripted three-shipment demo batch |
 | `/api/v1/orchestrator/state` | GET | Full dashboard projection: cases, events, audit, counters |
 | `/api/v1/orchestrator/case/<case_id>` | GET | One case with every agent hop, latency and action receipt |
-| `/api/v1/orchestrator/tick` | POST | Advance the pipeline one step. Cloud Scheduler fallback; the background loop normally does this. |
+| `/api/v1/orchestrator/tick` | POST | Advance the pipeline one step, for a script or Cloud Scheduler to call. In `WORKER_MODE=poll` the background loop does this. |
 | `/api/v1/orchestrator/reset` | POST | Clear all cases, events and audit records. Published delegation boundaries deliberately survive: clearing a board is a demo convenience, revoking authority is not. |
 | `/api/v1/orchestrator/drain` | POST | Run every pending case to a terminal state. The explicit lever for `WORKER_MODE=ondemand` — usable from Cloud Scheduler or to clear a backlog without waiting for the dashboard to poll it away one case at a time. |
 | `/api/v1/events/document` | POST | Document intake. Multipart `file` (PDF or image). Screens for injection, transcribes, archives the original, then runs the case to a terminal state in the same request. |
-| `/api/v1/events/storage` | POST | Cloud Storage notification sink — ingests a document dropped straight into the bucket. |
-| `/api/v1/ingest/bucket-sweep` | POST | Ingest every unprocessed object in `DOCUMENT_BUCKET`. Recovery path for notifications that were missed. |
+| `/api/v1/events/storage` | POST | Cloud Storage notification sink — ingests a document dropped straight into the bucket. No subscription connects `shipment-documents` to this endpoint in the deployed project. |
+| `/api/v1/ingest/bucket-sweep` | POST | Ingest every unprocessed object in `DOCUMENT_BUCKET`. A recovery path for missed notifications, and in the deployed project the only route from the bucket into the pipeline. |
 | `/api/v1/simulate/bulk` | POST | Randomised shipments weighted like a real book of business. Capped at `MAX_BULK_COUNT`. |
 
 ### Review, governance and configuration
@@ -376,7 +409,7 @@ carries the workflow to completion on its own.
 | `/api/v1/governance/publish` | POST | Publish a new delegation boundary. Supersedes the previous version rather than editing it. |
 | `/api/v1/config` | GET | Effective configuration and thresholds |
 | `/api/v1/config/model` | GET, POST | Read or switch the model used by intake, fraud and compliance. Investigation is pinned and unaffected. |
-| `/internal/execute` | POST | The execution surface. Same codebase, deployed a second time as `vf-executor` with a different service account — that deployment is the only place a protected action actually happens. Not under `/api/v1` because it is not a public API. |
+| `/internal/execute` | POST | Executes `publish_decision`, the only delegated action, on behalf of the analysis service. Served by `vf-executor` (same codebase, different service account), which is deployed but not called because `EXECUTOR_URL` is unset. Not under `/api/v1` because it is not meant as a public API. |
 
 ### Direct agent access
 
@@ -518,10 +551,11 @@ system degrades honestly instead: `security.model_armor.available` reports
 the injection, and the case is still held for a human. If you want to see Model
 Armor itself return `MATCH_FOUND`, grant the role.
 
-Provision the state store and the topics:
+Provision the state store, the document bucket and the topics:
 
 ```bash
 gcloud firestore databases create --location=asia-southeast1
+gcloud storage buckets create gs://YOUR_BUCKET --location=asia-southeast1
 gcloud pubsub topics create shipment-events
 gcloud pubsub topics create case-decisions
 ```
@@ -532,25 +566,27 @@ bare database. To skip Firestore entirely, deploy with `STORE_BACKEND=memory`.
 Deploy:
 
 ```bash
-gcloud run deploy vf-fraud-detection \
+gcloud run deploy vf-meet-the-builders \
   --source . \
   --region asia-southeast1 \
   --allow-unauthenticated \
   --memory 1Gi --cpu 1 --timeout 300 \
   --min-instances 0 --max-instances 3 \
-  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=global,WORKER_MODE=ondemand,STORE_BACKEND=firestore,DECISIONS_TOPIC=case-decisions,CLAIM_LEASE_SECONDS=120"
+  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=global,WORKER_MODE=ondemand,STORE_BACKEND=firestore,DECISIONS_TOPIC=case-decisions,CLAIM_LEASE_SECONDS=120,DOCUMENT_BUCKET=YOUR_BUCKET"
 ```
 
-This is the deployed configuration: `WORKER_MODE=ondemand` advances cases inside
-request handlers, so the service costs nothing while idle. If you would rather
-run a genuine always-on background loop, deploy with `WORKER_MODE=poll` **and**
-add `--no-cpu-throttling --min-instances 1` — without both flags Cloud Run
-suspends the container between requests and the loop stops advancing cases.
+The environment variables match the live service, which runs under a dedicated
+`vf-analysis` service account instead of the default compute account.
+`WORKER_MODE=ondemand` advances cases inside request handlers, so the service
+costs nothing while idle. If you would rather run a genuine always-on background
+loop, deploy with `WORKER_MODE=poll` **and** add
+`--no-cpu-throttling --min-instances 1` — without both flags Cloud Run suspends
+the container between requests and the loop stops advancing cases.
 
 Verify — `/health` reports which store backend is live and the worker mode:
 
 ```bash
-BASE=$(gcloud run services describe vf-fraud-detection \
+BASE=$(gcloud run services describe vf-meet-the-builders \
   --region asia-southeast1 --format='value(status.url)')
 
 curl -s $BASE/health          # expect store.backend=firestore, worker.mode=ondemand
@@ -558,7 +594,7 @@ curl -s $BASE/agents          # each agent reports the model it runs on
 
 # Run the autonomous pipeline end to end
 curl -s -X POST $BASE/api/v1/simulate
-curl -s $BASE/api/v1/orchestrator/state   # poll; each poll also advances a step
+curl -s $BASE/api/v1/orchestrator/state   # poll; each poll also runs one pending case
 ```
 
 Open `$BASE` in a browser for the dashboard.
@@ -566,15 +602,20 @@ Open `$BASE` in a browser for the dashboard.
 ### 3. Tear down
 
 ```bash
-gcloud run services delete vf-fraud-detection --region asia-southeast1
+gcloud run services delete vf-meet-the-builders --region asia-southeast1
 ```
 
 ---
 
 ## Reproducible testing
 
-Every step below runs against the live service with no setup. Replace `$BASE`
-with your own URL if you deployed your own copy.
+Tests 1, 2 and 4 and the read-only call in Test 5 run against the live service
+with no setup. Replace `$BASE` with your own URL if you deployed your own copy.
+
+> **Tests 3 and 6 wipe the board.** They reset every case, event and audit record
+> on the service they point at, and the live service holds the demo cases shown in
+> the video. Run them on your own deployment, not on the live URL. The same goes
+> for publishing a boundary in Test 5.
 
 ```bash
 BASE=https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
@@ -613,11 +654,13 @@ curl -s -X POST $BASE/api/v1/investigation/case \
 
 ### Test 3 — the autonomous pipeline, one call and no further input
 
+Run this on your own deployment: the first line clears the board.
+
 ```bash
 curl -s -X POST $BASE/api/v1/orchestrator/reset
 curl -s -X POST $BASE/api/v1/simulate
 
-# Poll. Each poll also advances the pipeline one step (WORKER_MODE=ondemand).
+# Poll. Each poll also runs one pending case to completion (WORKER_MODE=ondemand).
 curl -s $BASE/api/v1/orchestrator/state
 ```
 
@@ -651,6 +694,9 @@ propose, but every protected action is refused. Publish one via
 
 Seven bills of lading are committed to the repo, so this needs no setup beyond
 cloning. Each is a real PDF, not a fixture stub, and each isolates one mechanism.
+
+The script resets the board and its `BASE` constant points at the live service, so
+change `BASE` to your own deployment before running it.
 
 ```bash
 python scripts/test_documents.py        # one pass, ~5 minutes
@@ -745,7 +791,7 @@ which shows the per-case trace with the real model id and latency on every hop.
 | `MODEL_ARMOR_LOCATION` | Model Armor region | `asia-southeast1` |
 | `MODEL_ARMOR_WINDOW_CHARS` | Screening window size — see the findings section for why windowing is required | `400` |
 | `MODEL_ARMOR_MAX_CHARS` | Ceiling on how much document text is screened | `20000` |
-| `EXECUTOR_URL` | Executor service URL; unset means no identity split | unset |
+| `EXECUTOR_URL` | Executor service URL; unset means no identity split. Unset on the deployed service, so `publish_decision` runs under the analysis identity | unset |
 | `DECISIONS_TOPIC` | Pub/Sub topic for published decisions | `case-decisions` |
 | `NOTIFY_WEBHOOK_URL` | Outbound alert webhook; unset records the payload without sending | unset |
 | `MAX_BULK_COUNT` | Cap on the volume-test endpoint | `10` |
@@ -793,7 +839,7 @@ shipment exists. That was the original design and it was the wrong default: it i
 the polling equivalent of paying continuously to ask whether anything happened.
 
 `ondemand` is the default for that reason. Cases advance inside request
-handlers — the Pub/Sub push, the document upload, and the dashboard's own state
+handlers — the event POST, the document upload, and the dashboard's own state
 poll — so the pipeline runs when there is work and the service scales to zero
 when there is not. `POST /api/v1/orchestrator/drain` is the explicit lever for
 clearing a backlog from a script or Cloud Scheduler.
@@ -804,7 +850,7 @@ clearing a backlog from a script or Cloud Scheduler.
 
 **A human reviewer with no paperwork is not a control.** The review panel showed
 the source PDF only for cases uploaded as a document; cases that arrived as a
-Pub/Sub event or from the bulk simulator displayed "this case did not originate
+shipment event or from the bulk simulator displayed "this case did not originate
 from a document". So on exactly the volume path the system is built for, a person
 was being asked to release or hold a container on a risk score and a state label,
 with nothing to check either against. That is a rubber stamp with extra steps.
@@ -886,21 +932,27 @@ and an explicit `confidence` field in the schema are doing real work.
 ## Roadmap
 
 The orchestration layer is live; what is still stubbed is the data it reasons
-over. The agents currently receive route-cost baselines as request fields, and
-sanctions screening is the model's own knowledge rather than a list lookup. The
-next steps are BigQuery for real historical baselines, a genuine OFAC/UN/EU list
-integration behind the compliance agent, and replacing the scripted simulator
-with a production Pub/Sub subscription from the shipment system. `notify_webhook`
-is wired but inert until `NOTIFY_WEBHOOK_URL` is set to a Slack, Teams or Google
-Chat endpoint.
+over and the systems it hands off to. The agents currently receive route-cost
+baselines as request fields, and sanctions screening is the model's own knowledge
+rather than a list lookup. The next steps are BigQuery for real historical
+baselines, a genuine OFAC/UN/EU list integration behind the compliance agent,
+replacing the scripted simulator with a production Pub/Sub subscription from the
+shipment system, connecting `vf-executor` so the identity split is in force, and
+attaching a subscriber to `case-decisions` so a decision reaches an ERP or WMS.
+`notify_webhook` is wired but inert until `NOTIFY_WEBHOOK_URL` is set to a Slack,
+Teams or Google Chat endpoint.
 
 ---
 
 ## Screenshots
 
-[`docs/screenshots/`](docs/screenshots) holds 13 screenshots, all 3000x2000. They were captured against one board state so
+[`docs/screenshots/`](docs/screenshots) holds 13 screenshots, all 3000x2000. All but
+`12` were captured from the live service on 2026-11-04 against one board state, so
 they are mutually consistent — the counters in `01` are the same run as the cases
-in `04`.
+in `04`. The capture used a headless browser, which has no PDF viewer, so the PDF
+panels in `07`, `09` and `13` show the same files drawn as images. `12` needs a
+model call to reproduce, so it comes from an earlier run, and the badges of the
+original event are painted out of its header.
 
 | | |
 |---|---|
@@ -935,7 +987,7 @@ in `04`.
 ├── store.py                      Case/event/audit state (Firestore, memory fallback)
 ├── document_render.py            Renders event-sourced shipments as a bill of lading
 ├── document_store.py             Cloud Storage document archive
-├── executor_client.py            Calls the split-identity executor service
+├── executor_client.py            Calls the executor service; idle while EXECUTOR_URL is unset
 ├── tools.py                      Actions taken on the operator's behalf
 ├── simulator.py                  Scripted shipment events for the demo
 ├── scripts/                      Not deployed; data generation and verification

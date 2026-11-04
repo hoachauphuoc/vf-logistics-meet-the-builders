@@ -23,7 +23,7 @@ from store import get_store, new_id, utcnow
 # have sent rather than silently doing nothing.
 NOTIFY_WEBHOOK_URL = os.getenv("NOTIFY_WEBHOOK_URL", "").strip()
 
-# Optional Pub/Sub topic that downstream systems subscribe to for decisions.
+# Optional Pub/Sub topic for downstream systems to subscribe to for decisions.
 DECISIONS_TOPIC = os.getenv("DECISIONS_TOPIC", "case-decisions").strip()
 PROJECT_ID = os.getenv("PROJECT_ID", "project-93ded24f-21c3-4f1b-a7d")
 
@@ -158,13 +158,11 @@ async def publish_decision(case_id: str, decision: dict[str, Any]) -> dict[str, 
     Best effort: if the topic does not exist the decision is still recorded in
     the audit log, which is what the dashboard and the reviewer read.
 
-    Publishing is the one action here that reaches outside the system, so it is
-    the one action the analysis identity is deliberately not permitted to
-    perform. When an executor service is configured the call is delegated to it
-    over an authenticated cross-identity hop; see executor_client. The direct
-    path below is used in single-service deployments, and will be refused by IAM
-    with a 403 if the running identity lacks pubsub.publisher, which is the
-    intended outcome rather than something to work around.
+    When an executor service is configured the call is delegated to it over an
+    authenticated cross-identity hop; see executor_client. Otherwise it takes the
+    direct path below, which is how the project is deployed today: the analysis
+    identity holds pubsub.publisher on the topic. Without that permission IAM
+    refuses the publish with a 403 and the receipt records the failure.
     """
     body = {"case_id": case_id, **decision, "at": utcnow()}
 

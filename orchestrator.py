@@ -1,30 +1,29 @@
 """
 Autonomous orchestrator.
 
-This is the Taskmaster layer. It monitors an event stream, drives each shipment
-through a conditional multi-agent workflow without human involvement, and
-executes real actions on the outcome.
+This is the orchestration layer. It drives each shipment through a conditional
+multi-agent workflow without human involvement, and records an action for each
+outcome.
 
 State machine:
 
   INGESTED
-     |  fraud_detection agent
+     |  fraud_detection and compliance agents in parallel, then verifier.py
      v
-  FRAUD_SCORED
-     |-- risk < FRAUD_CLEAR_BELOW ---------------> AUTO_CLEARED   release_shipment
+  SPECIALISTS_DONE
+     |-- risk < FRAUD_CLEAR_BELOW, auto-clear permitted,
+     |   compliance not flagged -----------------> AUTO_CLEARED    release_shipment
      |
-     |-- risk >= FRAUD_CLEAR_BELOW
-     v  compliance agent
-  COMPLIANCE_SCREENED
-     |-- cleared and risk < INVESTIGATE_AT -----> HELD_FOR_REVIEW assign_analyst
+     |-- not flagged, risk < INVESTIGATE_AT -----> HELD_FOR_REVIEW assign_analyst
      |
      |-- blocked / review required, or risk >= INVESTIGATE_AT
      v  investigation agent (extended thinking)
   INVESTIGATED
      v
-  ESCALATED   hold_shipment + draft_sar + notify_webhook
+  ESCALATED   hold_shipment + draft_sar + notify_webhook + assign_analyst
 
-  Any step failing 3 times ends in DEAD_LETTER.
+  Every outcome also publishes the decision. An action the boundary refuses sends
+  the case to PENDING_HUMAN. Any step failing 3 times ends in DEAD_LETTER.
 
 Every transition is persisted before the next one starts, so a case survives an
 instance restart and is picked up wherever it left off.
@@ -70,11 +69,12 @@ MAX_CONCURRENT = int(os.getenv("MAX_CONCURRENT", "3"))
 # How the pipeline gets driven.
 #
 #   ondemand (default) - no background loop. Cases advance inside request
-#     handlers: the Pub/Sub push handler drives its own case to completion, and
-#     the dashboard's state poll drains a step at a time. This is the only mode
-#     that works with --min-instances=0 and CPU throttling, because Cloud Run
-#     freezes the container once a response is sent. It is also the only mode
-#     that costs nothing when nobody is using the system.
+#     handlers: the shipment event and document upload handlers drive their own
+#     case to completion, and the dashboard's state poll drains one case at a
+#     time. This is the only mode that works with --min-instances=0 and CPU
+#     throttling, because Cloud Run freezes the container once a response is
+#     sent. It is also the only mode that costs nothing when nobody is using the
+#     system.
 #
 #   poll - the original always-on worker loop. Requires
 #     --no-cpu-throttling --min-instances=1, which bills around the clock.
@@ -1183,7 +1183,7 @@ async def advance_until_terminal(case: dict[str, Any]) -> dict[str, Any]:
     """
     Drive one case from wherever it is to a terminal state, in this request.
 
-    This is what makes scale-to-zero viable: a single Pub/Sub delivery wakes the
+    This is what makes scale-to-zero viable: a single delivery wakes the
     container once and the whole workflow completes before the response is sent,
     instead of needing one wake-up per agent hop.
 

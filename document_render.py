@@ -3,8 +3,8 @@ Render a shipment record as a PDF bill of lading.
 
 A reviewer cannot judge a case from a risk score alone - they need the paperwork
 the decision was based on. Cases that arrive as a document already have one.
-Cases that arrive as a structured event (Pub/Sub, the bulk simulator) do not, and
-until now those showed the reviewer nothing to read.
+Cases that arrive as a structured event (the shipment endpoint, the bulk
+simulator) do not, and until now those showed the reviewer nothing to read.
 
 So the event record is rendered into the document it would have been in a real
 freight desk. This is deliberately labelled `SYSTEM-GENERATED` on the page and

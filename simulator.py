@@ -1,9 +1,9 @@
 """
 Simulated shipment event source.
 
-The autonomous pipeline normally consumes Pub/Sub messages produced by the
-shipment system. For a self-contained demo we inject a scripted batch instead,
-chosen so that all three branches of the state machine fire on camera:
+In production the pipeline would take its events from the shipment system. For a
+self-contained demo we inject a scripted batch instead, chosen so that all three
+branches of the state machine fire on camera:
 
   * SHIP-CLEAN  - clean paperwork, market-rate pricing, established shipper
                   -> expected AUTO_CLEARED
