@@ -14,8 +14,6 @@ Collections / keys:
   events     - append-only feed of what the orchestrator did, for the dashboard
   audit_log  - append-only record of actions taken on behalf of the operator
 
-Track: The Taskmaster - Autonomous Workflow Automation
-Hackathon: All Things Agentic 2026
 """
 
 from __future__ import annotations

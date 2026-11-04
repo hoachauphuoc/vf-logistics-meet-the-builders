@@ -9,8 +9,6 @@ shipment into a form" into "a document landed and the workflow started".
 Gemini 3.5 Flash reads PDFs and images natively, so no separate OCR or
 Document AI step is needed: the bytes go straight to the model.
 
-Track: The Taskmaster - Autonomous Workflow Automation
-Hackathon: All Things Agentic 2026
 """
 
 from __future__ import annotations

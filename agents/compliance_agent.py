@@ -2,7 +2,6 @@
 VF Logistics Compliance Screening Agent - Gemini 3.5 Flash
 Verifies shipments against sanctions lists, trade regulations, and compliance rules.
 
-Track: The Taskmaster - Autonomous Workflow Automation
 """
 
 import os

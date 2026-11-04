@@ -2,8 +2,6 @@
 VF Logistics Fraud Detection Agent - Gemini 3.5 Flash
 Built 100% on Google Cloud (Vertex AI + Cloud Run)
 
-Track: The Taskmaster - Autonomous Workflow Automation
-Hackathon: All Things Agentic 2026
 """
 
 import os

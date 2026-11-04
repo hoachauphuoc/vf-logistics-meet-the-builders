@@ -1,7 +1,6 @@
 # VF Logistics — Autonomous Fraud Detection Agents
 
-**Hackathon:** All Things Agentic 2026
-**Track:** The Taskmaster — Autonomous Workflow Automation
+**Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
 **Live URL:** https://vf-fraud-detection-304507056252.asia-southeast1.run.app
 
 A multi-agent system that screens logistics shipments for fraud, sanctions/trade
@@ -221,7 +220,7 @@ definition — you see them on the board.
          └──────────────────────────────────────┘
 ```
 
-See `docs/architecture.png` for the diagram submitted to Devpost.
+See `docs/architecture.png` for the architecture diagram.
 
 ### The autonomous workflow
 
@@ -316,7 +315,7 @@ the routing policy is configuration rather than something buried in code.
 | Frontend | Vanilla HTML/CSS/JS, no build step |
 | Runtime | Python 3.11-slim container |
 
-Requirement check against the hackathon rules:
+Google Cloud usage check:
 
 - Gemini 3.5 or newer, via Vertex AI -> `gemini-3.5-flash` and
   `gemini-3.5-flash-lite`
@@ -339,7 +338,7 @@ Requirement check against the hackathon rules:
 
 ### Autonomous orchestration
 
-These are the Taskmaster endpoints. None of them wait for an agent: ingestion
+These are the autonomous-orchestration endpoints. None of them wait for an agent: ingestion
 returns as soon as the case is durably recorded, and the background worker
 carries the workflow to completion on its own.
 
@@ -436,7 +435,7 @@ Response (`analysis` is a JSON string produced by the model):
 
 ```bash
 git clone <this-repo>
-cd vf-logistics-hackathon-google
+cd vf-logistics-meet-the-builders
 
 python -m venv venv
 # Windows
@@ -891,8 +890,7 @@ Chat endpoint.
 
 ## Screenshots
 
-[`docs/screenshots/`](docs/screenshots) holds the 13 images submitted to the
-Devpost gallery, all 3000x2000. They were captured against one board state so
+[`docs/screenshots/`](docs/screenshots) holds 13 screenshots, all 3000x2000. They were captured against one board state so
 they are mutually consistent — the counters in `01` are the same run as the cases
 in `04`.
 
@@ -951,17 +949,17 @@ in `04`.
 │   └── model_armor_template.json  Filter config for the Model Armor template
 ├── docs/
 │   ├── architecture.html         Diagram source
-│   ├── architecture.png          Diagram submitted to Devpost
+│   ├── architecture.png          Architecture diagram
 │   ├── PROJECT_STORY.md          What was built and what it cost to learn
-│   └── screenshots/              The 13 images in the Devpost gallery, 3000x2000
+│   └── screenshots/              The 13 screenshots, 3000x2000
 ├── Dockerfile                    python:3.11-slim + gunicorn
 ├── cloudbuild.yaml               Cloud Build config
 ├── requirements.txt
 ├── .env.example
-├── SUBMISSION.md                 Devpost copy
+├── SUBMISSION.md                 Meet the Builders submission copy
 └── README.md
 ```
 
 ## License
 
-MIT — hackathon project, 2026.
+MIT — see [LICENSE](LICENSE).

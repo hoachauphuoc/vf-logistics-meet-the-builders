@@ -2,8 +2,6 @@
 VF Logistics Fraud Detection - Main Flask Application
 Built 100% on Google Cloud: Cloud Run + Gemini 3.5 Flash on Vertex AI
 
-Track: The Taskmaster - Autonomous Workflow Automation
-Hackathon: All Things Agentic 2026
 """
 
 import asyncio
@@ -121,8 +119,6 @@ def health():
         "service": "VF Logistics Fraud Detection",
         "version": "2.0.0",
         "timestamp": utcnow(),
-        "hackathon": "All Things Agentic 2026",
-        "track": "The Taskmaster",
         "store": store_status(),
         "worker": orchestrator.worker_status()
     })

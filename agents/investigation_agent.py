@@ -6,7 +6,6 @@ This agent uses Gemini 3.5 Flash-Lite for cost-efficient summarization and
 report generation, while heavy-lifting agents (document, fraud, compliance)
 use Gemini 3.5 Flash for complex multimodal reasoning.
 
-Track: The Taskmaster - Autonomous Workflow Automation
 """
 
 import json

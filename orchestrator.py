@@ -29,8 +29,6 @@ State machine:
 Every transition is persisted before the next one starts, so a case survives an
 instance restart and is picked up wherever it left off.
 
-Track: The Taskmaster - Autonomous Workflow Automation
-Hackathon: All Things Agentic 2026
 """
 
 from __future__ import annotations
