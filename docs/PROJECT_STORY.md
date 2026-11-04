@@ -1,3 +1,7 @@
+# VF Logistics — build story
+
+The long-form story behind the [README](../README.md).
+
 ## Inspiration
 
 A freight forwarder's compliance desk is a queue of PDFs. A bill of lading lands,

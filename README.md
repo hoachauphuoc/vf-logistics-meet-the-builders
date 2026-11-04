@@ -1,8 +1,8 @@
-# VF Logistics — Autonomous Fraud Detection Agents
+# VF Logistics — Fraud Agents That Can Only Do What an Operator Allows
 
 **Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
 **Live URL:** https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
-**Also see:** [architecture diagram](docs/architecture.png) · [build story](docs/PROJECT_STORY.md) · [screenshots](docs/screenshots)
+**Also see:** [architecture diagram](docs/architecture.png) · [build story](docs/PROJECT_STORY.md) · [API](docs/API.md) · [deploy](docs/DEPLOY.md) · [findings](docs/FINDINGS.md) · [screenshots](docs/screenshots)
 
 ## At a glance
 
@@ -56,17 +56,9 @@ section *What is connected today* has the detail.
 
 ---
 
-> **Origin of this project.** This repository is a copy of
-> [CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
-> which I originally built for the All Things Agentic Hackathon 2026. The code and
-> architecture are the same work by the same author. This copy only removes the
-> branding of that event, adds an MIT `LICENSE`, and rewrites `SUBMISSION.md` for
-> Google Gen AI Academy APAC — Meet the Builders. The original repository and its
-> commit history remain the source of record.
-
-A multi-agent system that screens logistics shipments for fraud, sanctions/trade
-compliance violations, and runs deep-dive investigations — without a human
-walking it through each step. Runs entirely on Google Cloud services: Gemini 3.5 Flash and
+Four Gemini agents screen logistics shipments for fraud and sanctions risk and run
+deep-dive investigations without a human walking them through each step, while a
+published Delegation Boundary, set by the operator, limits what they may do. Runs entirely on Google Cloud services: Gemini 3.5 Flash and
 Gemini 3.5 Flash-Lite on Vertex AI + Cloud Run + Firestore + Pub/Sub +
 Cloud Storage + Model Armor.
 
@@ -413,17 +405,14 @@ the routing policy is configuration rather than something buried in code.
 
 Google Cloud usage check:
 
-- Gemini 3.5 or newer, via Vertex AI -> `gemini-3.5-flash` and
-  `gemini-3.5-flash-lite`
-- At least one Google agent framework -> Google GenAI SDK
-- Google Cloud infrastructure -> Cloud Run (compute), Firestore (case state and
-  audit trail), Cloud Storage (document archive), Pub/Sub (decision publishing)
-- Runs without a person stepping it through -> the request that delivers the work
-  runs the case through every step with no further input; `WORKER_MODE=poll` adds
-  a background loop that the deployed service does not use
-- Multi-step workflow -> four agents chained with conditional branching
-- Takes meaningful action -> release and hold dispositions recorded, analysts
-  assigned, SAR drafts produced, decisions published
+| Requirement | Where it is met |
+|---|---|
+| Gemini 3.5 or newer, via Vertex AI | `gemini-3.5-flash` and `gemini-3.5-flash-lite` |
+| A Google agent framework | Google GenAI SDK |
+| Google Cloud infrastructure | Cloud Run (compute), Firestore (case state and audit trail), Cloud Storage (document archive), Pub/Sub (decision publishing) |
+| Runs without a person stepping it through | The request that delivers the work runs the case through every step with no further input; `WORKER_MODE=poll` adds a background loop that the deployed service does not use |
+| Multi-step workflow | Four agents chained with conditional branching |
+| Takes meaningful action | Release and hold dispositions recorded, analysts assigned, SAR drafts produced, decisions published |
 
 > Firestore, Cloud Storage and Pub/Sub publishing are used on the live path, not
 > merely pinned. BigQuery is not used yet; see *Roadmap*.
@@ -432,243 +421,13 @@ Google Cloud usage check:
 
 ## API
 
-### Autonomous orchestration
-
-These are the autonomous-orchestration endpoints. In the deployed
-`WORKER_MODE=ondemand` configuration, `/api/v1/events/shipment` and
-`/api/v1/events/document` run the case to a terminal state before responding,
-usually 30 to 60 seconds. Under `WORKER_MODE=poll` they return once the case is
-recorded and the background worker carries it on.
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/events/shipment` | POST | Shipment-created event sink. Accepts a bare shipment or a Pub/Sub push envelope. Idempotent per `shipment_id`. |
-| `/api/v1/simulate` | POST | Inject the scripted three-shipment demo batch |
-| `/api/v1/orchestrator/state` | GET | Full dashboard projection: cases, events, audit, counters |
-| `/api/v1/orchestrator/case/<case_id>` | GET | One case with every agent hop, latency and action receipt |
-| `/api/v1/orchestrator/tick` | POST | Advance the pipeline one step, for a script or Cloud Scheduler to call. In `WORKER_MODE=poll` the background loop does this. |
-| `/api/v1/orchestrator/reset` | POST | Clear all cases, events and audit records. Published delegation boundaries deliberately survive: clearing a board is a demo convenience, revoking authority is not. Not for the live URL, whose board is shared demo data. |
-| `/api/v1/orchestrator/drain` | POST | Run every pending case to a terminal state. The explicit lever for `WORKER_MODE=ondemand` — usable from Cloud Scheduler or to clear a backlog without waiting for the dashboard to poll it away one case at a time. |
-| `/api/v1/events/document` | POST | Document intake. Multipart `file` (PDF or image). Screens for injection, transcribes, archives the original, then runs the case to a terminal state in the same request. |
-| `/api/v1/events/storage` | POST | Cloud Storage notification sink — ingests a document dropped straight into the bucket. No subscription connects `shipment-documents` to this endpoint in the deployed project. |
-| `/api/v1/ingest/bucket-sweep` | POST | Ingest every unprocessed object in `DOCUMENT_BUCKET`. A recovery path for missed notifications, and in the deployed project the only route from the bucket into the pipeline. |
-| `/api/v1/simulate/bulk` | POST | Randomised shipments weighted like a real book of business. Capped at `MAX_BULK_COUNT`. |
-
-### Review, governance and configuration
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/review/queue` | GET | Everything the agent was not permitted to close, with state, risk and findings |
-| `/api/v1/review/<case_id>/decide` | POST | Record a human decision — release, block or request more information |
-| `/api/v1/review/<case_id>/document` | GET | The case's bill of lading: the shipper's original when one was uploaded, otherwise a `SYSTEM-GENERATED` reconstruction, labelled as such |
-| `/api/v1/governance/agent` | GET | Agent status and the boundary version it is operating under |
-| `/api/v1/governance/boundaries` | GET | Every published boundary version, newest first |
-| `/api/v1/governance/publish` | POST | Publish a new delegation boundary. Supersedes the previous version rather than editing it. |
-| `/api/v1/config` | GET | Effective configuration and thresholds |
-| `/api/v1/config/model` | GET, POST | Read or switch the model used by intake, fraud and compliance. Investigation is pinned and unaffected. |
-| `/internal/execute` | POST | Executes `publish_decision`, the only delegated action, on behalf of the analysis service. Served by `vf-executor` (same codebase, different service account), which is deployed but not called because `EXECUTOR_URL` is unset. Not under `/api/v1` because it is not meant as a public API. |
-
-### Direct agent access
-
-Useful for inspecting a single agent in isolation, and what the Single Agent
-Console in the dashboard calls.
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/` | GET | Web dashboard (HTML) |
-| `/health` | GET | Health check, store backend, worker status |
-| `/agents` | GET | Agent metadata & capabilities |
-| `/demo` | GET | Runs the fraud agent on a built-in sample shipment |
-| `/api/v1/fraud/analyze` | POST | Analyse one shipment |
-| `/api/v1/fraud/batch` | POST | Analyse many — body `{"shipments":[...]}` |
-| `/api/v1/compliance/screen` | POST | Compliance screening for a shipment |
-| `/api/v1/compliance/entity` | POST | Screen a single entity |
-| `/api/v1/investigation/case` | POST | Deep-dive investigation |
-| `/api/v1/investigation/report` | POST | Consolidated report — body `{"investigations":[...]}` |
-
-### Example
-
-```bash
-curl -s -X POST \
-  https://vf-meet-the-builders-304507056252.asia-southeast1.run.app/api/v1/fraud/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "shipment_id": "VF-2026-0001",
-    "origin": "Ho Chi Minh City",
-    "destination": "Hanoi",
-    "weight_kg": 150,
-    "declared_value": 50000000,
-    "shipping_cost": 1200000,
-    "avg_route_cost": 3000000,
-    "shipper_name": "Thanh Phat Trading Co",
-    "receiver_name": "Minh Long Import Ltd",
-    "shipper_tx_count": 2,
-    "status": "pending",
-    "route_details": "HCMC to Hanoi"
-  }'
-```
-
-Response (`analysis` is a JSON string produced by the model):
-
-```json
-{
-  "shipment_id": "VF-2026-0001",
-  "model": "gemini-3.5-flash",
-  "analyzed_at": "2026-08-29T07:10:00.000000",
-  "analysis": "{\"risk_score\":78,\"risk_level\":\"HIGH\",\"flags\":[...],\"recommendations\":[...],\"confidence\":0.9}"
-}
-```
+Endpoint reference, request and response examples: [docs/API.md](docs/API.md).
 
 ---
 
-## Spin-up instructions
+## Run and deploy
 
-### Prerequisites
-
-- Python 3.11+
-- `gcloud` CLI
-- A Google Cloud project with billing enabled
-
-### 1. Run locally
-
-```bash
-git clone <this-repo>
-cd vf-logistics-meet-the-builders
-
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# macOS / Linux
-source venv/bin/activate
-
-pip install -r requirements.txt
-```
-
-Authenticate so the GenAI SDK can reach Vertex AI:
-
-```bash
-gcloud auth application-default login
-gcloud config set project YOUR_PROJECT_ID
-```
-
-Configure and start:
-
-```bash
-cp .env.example .env       # Windows: copy .env.example .env
-# set PROJECT_ID=YOUR_PROJECT_ID and LOCATION=global
-
-python main.py             # http://localhost:8080
-```
-
-### 2. Deploy to Cloud Run
-
-Enable the APIs:
-
-```bash
-gcloud services enable \
-  run.googleapis.com \
-  aiplatform.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  modelarmor.googleapis.com \
-  --project YOUR_PROJECT_ID
-```
-
-Grant the default compute service account the roles it needs. **This step is
-required** — source deploys fail without the build/storage roles, every model
-call returns `403 PERMISSION_DENIED` without `aiplatform.user`, and the
-orchestrator cannot persist a case without `datastore.user`:
-
-```bash
-PROJECT_ID=YOUR_PROJECT_ID
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
-
-for ROLE in \
-  roles/aiplatform.user \
-  roles/datastore.user \
-  roles/pubsub.publisher \
-  roles/storage.objectAdmin \
-  roles/artifactregistry.writer \
-  roles/logging.logWriter \
-  roles/modelarmor.user
-do
-  gcloud projects add-iam-policy-binding $PROJECT_ID \
-    --member="serviceAccount:$SA" --role="$ROLE"
-done
-```
-
-IAM changes take up to a minute to propagate. A `403 Missing or insufficient
-permissions` from Firestore immediately after granting `datastore.user` usually
-means you were faster than IAM, not that the grant failed.
-
-`roles/modelarmor.user` is easy to miss because nothing crashes without it. The
-system degrades honestly instead: `security.model_armor.available` reports
-`false` with the 403 in `detail`, the independent pattern screen still catches
-the injection, and the case is still held for a human. If you want to see Model
-Armor itself return `MATCH_FOUND`, grant the role.
-
-The deploy command does not create the Model Armor template either. The service
-looks for one named `vf-document-intake` in `MODEL_ARMOR_LOCATION`, and
-[`infra/model_armor_template.json`](infra/model_armor_template.json) holds the
-filter settings it expects. Without a template the screen cannot run, so
-`model_armor.py` reports the gate as unavailable rather than trusting the document.
-Create the template in the Model Armor console or API with those settings, or set
-`MODEL_ARMOR_TEMPLATE` to an empty value to run without the gate.
-
-Provision the state store, the document bucket and the topics:
-
-```bash
-gcloud firestore databases create --location=asia-southeast1
-gcloud storage buckets create gs://YOUR_BUCKET --location=asia-southeast1
-gcloud pubsub topics create shipment-events
-gcloud pubsub topics create case-decisions
-```
-
-No Firestore indexes need to be created; the service is written to run against a
-bare database. To skip Firestore entirely, deploy with `STORE_BACKEND=memory`.
-
-Deploy:
-
-```bash
-gcloud run deploy vf-meet-the-builders \
-  --source . \
-  --region asia-southeast1 \
-  --allow-unauthenticated \
-  --memory 1Gi --cpu 1 --timeout 300 \
-  --min-instances 0 --max-instances 3 \
-  --set-env-vars "PROJECT_ID=$PROJECT_ID,LOCATION=global,WORKER_MODE=ondemand,STORE_BACKEND=firestore,DECISIONS_TOPIC=case-decisions,CLAIM_LEASE_SECONDS=120,DOCUMENT_BUCKET=YOUR_BUCKET"
-```
-
-The environment variables match the live service, which runs under a dedicated
-`vf-analysis` service account instead of the default compute account.
-`WORKER_MODE=ondemand` advances cases inside request handlers, so the service
-costs nothing while idle. If you would rather run a genuine always-on background
-loop, deploy with `WORKER_MODE=poll` **and** add
-`--no-cpu-throttling --min-instances 1` — without both flags Cloud Run suspends
-the container between requests and the loop stops advancing cases.
-
-Verify — `/health` reports which store backend is live and the worker mode:
-
-```bash
-BASE=$(gcloud run services describe vf-meet-the-builders \
-  --region asia-southeast1 --format='value(status.url)')
-
-curl -s $BASE/health          # expect store.backend=firestore, worker.mode=ondemand
-curl -s $BASE/agents          # each agent reports the model it runs on
-
-# Run the autonomous pipeline end to end
-curl -s -X POST $BASE/api/v1/simulate
-curl -s $BASE/api/v1/orchestrator/state   # poll; each poll also runs one pending case
-```
-
-Open `$BASE` in a browser for the dashboard.
-
-### 3. Tear down
-
-```bash
-gcloud run services delete vf-meet-the-builders --region asia-southeast1
-```
+Local run, Cloud Run deploy and tear down: [docs/DEPLOY.md](docs/DEPLOY.md). Environment variables and the cost note are in the same file.
 
 ---
 
@@ -864,157 +623,9 @@ which shows the per-case trace with the real model id and latency on every hop.
 
 ---
 
-## Environment variables
+## Findings and learnings
 
-| Variable | Description | Default |
-|---|---|---|
-| `PROJECT_ID` | GCP project used for Vertex AI, Firestore, Pub/Sub | `project-93ded24f-21c3-4f1b-a7d` |
-| `LOCATION` | Vertex AI location — must be `global` for Gemini 3.5 Flash | `global` |
-| `WORKER_MODE` | `ondemand` (advance inside requests, costs nothing idle) or `poll` (always-on background loop) | `ondemand` |
-| `STORE_BACKEND` | `firestore` or `memory` | `firestore` |
-| `CLAIM_LEASE_SECONDS` | How long a claimed case stays claimed before another worker may take it | `180` |
-| `FRAUD_CLEAR_BELOW` | Risk below which auto-clear is considered | `40` |
-| `INVESTIGATE_AT` | Risk at or above which investigation always opens | `70` |
-| `DOCUMENT_BUCKET` | Cloud Storage bucket for document archive and stage ingestion. **Set this** — without it no case keeps a reviewable document, and the review panel has nothing to show a human | unset |
-| `MODEL_ARMOR_TEMPLATE` | Model Armor template id; set to an empty value to disable the gate | `vf-document-intake` |
-| `MODEL_ARMOR_LOCATION` | Model Armor region | `asia-southeast1` |
-| `MODEL_ARMOR_WINDOW_CHARS` | Screening window size. The filter missed an injection inside a 1,150-character document that it flagged when the same text was sent alone, so documents are screened in overlapping pieces as well as whole (`_windows()` in `model_armor.py`) | `400` |
-| `MODEL_ARMOR_MAX_CHARS` | Ceiling on how much document text is screened | `20000` |
-| `EXECUTOR_URL` | Executor service URL; unset means no identity split. Unset on the deployed service, so `publish_decision` runs under the analysis identity | unset |
-| `DECISIONS_TOPIC` | Pub/Sub topic for published decisions | `case-decisions` |
-| `NOTIFY_WEBHOOK_URL` | Outbound alert webhook; unset records the payload without sending | unset |
-| `MAX_BULK_COUNT` | Cap on the volume-test endpoint | `10` |
-| `PORT` | Port gunicorn binds to (set by Cloud Run) | `8080` |
-| `GEMINI_MODEL` | Model for intake, fraud and compliance. Investigation ignores it. | `gemini-3.5-flash` |
-| `MAX_DOCUMENT_MB` | Rejection threshold for uploaded documents | `20` |
-| `MAX_ATTEMPTS` | Retries before a case is dead-lettered | `3` |
-| `MAX_CONCURRENT` | Cases advanced in parallel | `3` |
-| `MAX_CHAIN_STEPS` | Hops one case may take before the chain is cut. Guards against a case cycling forever, not a Gemini call budget. | `6` |
-| `CHAIN_BUDGET_SECONDS` | Wall-clock ceiling for one case's chain | `120` |
-| `POLL_SECONDS` | Loop interval in `WORKER_MODE=poll`. Ignored in `ondemand`. | `1.5` |
-| `MODEL_ARMOR_WINDOW_OVERLAP` | Overlap between screening windows, so an injection split across a boundary is still seen whole | `120` |
-| `MODEL_ARMOR_MAX_WINDOWS` | Cap on windows screened per document | `8` |
-| `BOUNDARY_BOOTSTRAP_AUTHOR` | Name recorded as the publisher of the bootstrap boundary. Unset leaves the bootstrap author blank rather than inventing one. | unset |
-| `DRIFT_MIN_SAMPLE` | Decisions required before drift is assessed at all | `8` |
-| `DRIFT_MAX_AUTO_RELEASE_RATE` | Auto-release rate above which the agent is flagged as drifting permissive | `0.85` |
-| `DRIFT_MAX_VETO_RATE` | Human-veto rate above which the agent's judgement is flagged as untrusted | `0.60` |
-| `DRIFT_MAX_INJECTION_RATE` | Injection-attempt rate above which intake is flagged as under attack | `0.20` |
-
-`config.py` holds the shared model registry and per-token pricing. Three of the
-four agents — document intake, fraud detection and compliance — resolve their
-model at call time through `model_config.get_model()`, which reads `GEMINI_MODEL`
-at import and can be changed at runtime via `POST /api/v1/config/model` or the
-dashboard dropdown. The registry holds four ids: `gemini-3.5-flash` (default),
-`gemini-3.5-flash-lite`, `gemini-3.6-flash` and `gemini-3.7-flash`.
-
-The investigation agent is the exception: `agents/investigation_agent.py` pins
-`gemini-3.5-flash-lite` as a module constant, so the one hop chosen for being
-cheap cannot be switched to an expensive model by a runtime call or a
-misconfigured environment variable.
-
-This is worth stating plainly because an earlier version of this section claimed
-the opposite — that every model id was pinned in code and therefore immune to a
-bad deploy. It is not. A wrong `GEMINI_MODEL` will silently move three agents
-onto a different model, and the switch is deliberately exposed over HTTP so the
-cost comparison in the dashboard is real rather than described. If you need the
-stronger guarantee, remove the setter at `config.py:50` and the
-`POST /api/v1/config/model` route in `main.py`.
-
-### A note on cost
-
-`WORKER_MODE=poll` requires `--no-cpu-throttling --min-instances=1`, which bills
-around the clock — roughly 0.095 USD/hour in `asia-southeast1` whether or not any
-shipment exists. That was the original design and it was the wrong default: it is
-the polling equivalent of paying continuously to ask whether anything happened.
-
-`ondemand` is the default for that reason. Cases advance inside request
-handlers — the event POST, the document upload, and the dashboard's own state
-poll — so the pipeline runs when there is work and the service scales to zero
-when there is not. `POST /api/v1/orchestrator/drain` is the explicit lever for
-clearing a backlog from a script or Cloud Scheduler.
-
----
-
-## Findings & learnings
-
-**A human reviewer with no paperwork is not a control.** The review panel showed
-the source PDF only for cases uploaded as a document; cases that arrived as a
-shipment event or from the bulk simulator displayed "this case did not originate
-from a document". So on exactly the volume path the system is built for, a person
-was being asked to release or hold a container on a risk score and a state label,
-with nothing to check either against. That is a rubber stamp with extra steps.
-
-Now a case carries a document. Event-sourced shipments are rendered into a
-bill of lading (`document_render.py`) and archived beside real uploads, so
-`provenance.uri` resolves and the reviewer has something to read whenever
-`DOCUMENT_BUCKET` is configured — without a bucket the archive step reports
-`archived: false` and there is nothing to show, which is the one case where this
-still fails.
-The rendering is labelled `SYSTEM-GENERATED` on the page and `generated: true` in
-the provenance, and the panel says so above the viewer: it is a faithful
-rendering of the event that opened the case, not a scan of a shipper's original.
-Passing a reconstruction off as an original would corrupt the audit trail the
-system exists to keep.
-
-The same review revealed the archive had never run in production at all —
-`DOCUMENT_BUCKET` was unset on the Cloud Run service, so `document_store.archive`
-returned `{"archived": false, "reason": "DOCUMENT_BUCKET not configured"}` and
-even document-sourced cases had no viewable original. The graceful degradation
-worked exactly as designed, which is why it went unnoticed: ingestion never
-failed, it just quietly stopped keeping evidence.
-
-**`asyncio.run()` per Flask request breaks a cached client.** The single-agent
-endpoints were wrapped in a decorator that called `asyncio.run()`, which closes
-its event loop on the way out. The Vertex AI client is built once and cached at
-module level, so it held a reference to a loop that no longer existed and the
-*second* analysis in a container's life failed with `Event loop is closed`. It
-looked intermittent because Cloud Run kept starting fresh instances, and a single
-curl against a cold container always passed. Every coroutine in the process now
-runs on the one long-lived worker loop the orchestrator already uses.
-
-**Documenting a constraint is not the same as enforcing it.** This README states
-in two places that `LOCATION` must be `global`, and `cloudbuild.yaml` set it to
-`asia-southeast1` — the exact value described two paragraphs below as returning
-`404 NOT_FOUND`. The Cloud Build path was never the one used to deploy by hand,
-so nothing exercised it. A constraint that matters belongs in the file that
-applies it, with the reason next to it, not only in prose.
-
-**A UI can invite an action it does not implement.** The intake card read "Drop a
-bill of lading…" and had no drop handler, so dropping a PDF made the browser
-navigate away from the dashboard and open the file. Every test had used the file
-picker, so nothing caught it until the demo was scripted shot by shot. The fix
-routes a dropped file into the existing input and clicks the existing button —
-one upload path to keep correct rather than two that drift apart.
-
-**Gemini 3.5 Flash is not on regional endpoints.** `us-central1` and
-`asia-southeast1` both returned `404 NOT_FOUND` for
-`publishers/google/models/gemini-3.5-flash`. Only `locations/global` served it.
-The 404 message ("was not found **or your project does not have access to it**")
-reads like an entitlement problem, which sent us looking at IAM before we
-checked the endpoint — worth knowing.
-
-**`ThinkingConfig` field is `thinking_budget`, not `thinking_budget_tokens`.**
-The wrong name raises a pydantic validation error *before* any network call, so
-the endpoint failed in ~3 ms. That latency in the Cloud Run request log is the
-tell: a model failure would have taken seconds. I found the real field with
-`python -c "import google.genai.types as t; print(list(t.ThinkingConfig.model_fields))"`.
-
-**Cloud Build source deploys need three separate grants.** The default compute
-service account needs `storage.objectAdmin` (read the uploaded source zip),
-`artifactregistry.writer` (push the image) and `logging.logWriter` (or build
-logs vanish, which is how I ended up debugging a "FAILURE" build with no log
-output at all). A build whose docker step reports `SUCCESS` but produces no
-entry under `results.images` has failed at push, not at build.
-
-**Prompting for `response_mime_type="application/json"` is what makes the
-multi-agent hand-off practical.** Each agent's output is consumed as data, not
-re-parsed prose, so adding a fourth agent is a routing change rather than a
-parsing project.
-
-**Design insight:** this started as SQL predicates over historical aggregates.
-Moving to Gemini let us delete most of that and describe the *intent* instead —
-but it also means the output is no longer deterministic, so `temperature=0.1`
-and an explicit `confidence` field in the schema are doing real work.
+What went wrong while building this and what it changed: [docs/FINDINGS.md](docs/FINDINGS.md).
 
 ---
 
@@ -1108,6 +719,18 @@ original event are painted out of its header.
 ├── SUBMISSION.md                 Meet the Builders submission copy
 └── README.md
 ```
+
+## Provenance
+
+This repository is a copy of
+[CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
+which I originally built for the All Things Agentic Hackathon 2026. The code and
+architecture are the same work by the same author. This copy only removes the
+branding of that event, adds an MIT `LICENSE`, and rewrites `SUBMISSION.md` for
+Google Gen AI Academy APAC — Meet the Builders. The original repository and its
+commit history remain the source of record.
+
+---
 
 ## License
 
