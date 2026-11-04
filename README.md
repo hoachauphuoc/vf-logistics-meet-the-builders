@@ -2,6 +2,49 @@
 
 **Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
 **Live URL:** https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
+**Also see:** [architecture diagram](docs/architecture.png) · [build story](docs/PROJECT_STORY.md) · [screenshots](docs/screenshots)
+
+## At a glance
+
+**What it is.** An autonomous compliance pipeline for shipping documents. A bill
+of lading (PDF or scan) or a shipment event arrives, and four Gemini agents plus a
+deterministic verifier take it to a decision without anyone stepping it through.
+A person sees only the cases that fall outside a policy a person published.
+
+**Why it is worth a look: the agents are not trusted.** A model here never
+decides on its own authority.
+
+| Strength | Evidence | Where to check |
+|---|---|---|
+| **Autonomous, end to end** | Three shipments with different risk profiles reached three different outcomes (`AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED`) in about 30 seconds with no human input. Four consecutive runs from a reset board gave the same three. | Test 3 |
+| **A model cannot talk its way past the controls** | `effective_risk = max(model_risk, deterministic floor)`. An agent coerced into `risk_score: 0` on a dual-use shipment still produced an effective risk of 90 and a case routed to a human. | [`verifier.py`](verifier.py), Test 4 |
+| **Prompt injection stopped before the model runs** | Model Armor screens the extracted text in overlapping windows before Gemini is invoked, and a second pattern-based screen runs even if Model Armor is unreachable, so the path fails closed. For the injected sample `security.model_invoked` is `false`. | [`model_armor.py`](model_armor.py), `injected_bol.pdf`, Test 6 |
+| **Authority is published, not earned** | A human publishes a versioned, machine-readable Delegation Boundary. With none in force the system is `SUSPENDED` and refuses every protected action. A clean shipment declared above the USD 25,000 ceiling is refused too. | [`governance.py`](governance.py), Tests 5 and 6 |
+| **A forged identity is worse than none** | A real customer's tax ID under a different company name is `identity_mismatch` (floor 75) against 45 for an unknown shipper. The fields a document could use to vouch for itself are excluded from its schema. | [`shipper_registry.py`](shipper_registry.py), [`untrusted.py`](untrusted.py) |
+| **Auditable** | Every agent hop records the model id and latency. The reviewer sees the shipper's original PDF, or a rendering labelled `SYSTEM-GENERATED` when there is none. | [`document_render.py`](document_render.py), screenshots 05 to 09 |
+| **Cost-aware by design** | Flash for the calls that decide, Flash-Lite for synthesis. Cases advance inside requests, so the service scales to zero instead of paying about 0.095 USD/hour for an always-on loop. | *Why these choices* |
+| **Reproducible, and honest about its limits** | Seven sample PDFs and one command that exits non-zero if any lands outside the outcome this README documents. A table says which parts of the design are deployed and which are not. | [`scripts/test_documents.py`](scripts/test_documents.py), *What is connected today* |
+
+**Google Cloud stack.** Gemini 3.5 Flash and Gemini 3.5 Flash-Lite on Vertex AI
+through the Google GenAI SDK, with Cloud Run, Firestore, Cloud Storage, Pub/Sub
+and Model Armor.
+
+**Check it in 60 seconds.** No login. These calls are read-only and leave the live
+board as it is:
+
+```bash
+BASE=https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
+curl -s $BASE/health                               # healthy, store.backend: firestore
+curl -s $BASE/agents                               # four agents, two models
+curl -s "$BASE/api/v1/orchestrator/state?drain=0"  # live cases with effective_risk and outcomes
+```
+
+**Honest limits.** `vf-executor` is deployed but not connected, the
+`case-decisions` topic has no subscriber yet, sanctions screening is the model's
+own knowledge rather than a list lookup, and the live board is demo data. The
+section *What is connected today* has the detail.
+
+---
 
 > **Origin of this project.** This repository is a copy of
 > [CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
