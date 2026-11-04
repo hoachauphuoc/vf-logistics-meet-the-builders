@@ -16,7 +16,7 @@ published Delegation Boundary.
 ## Links
 
 - Live service: https://vf-fraud-detection-304507056252.asia-southeast1.run.app
-- Code: *(add the public GitHub URL of this repository once pushed)*
+- Code: https://github.com/hoachauphuoc/vf-logistics-meet-the-builders
 - Architecture diagram: `docs/architecture.png`
 - Screenshots: `docs/screenshots/`
 - Build story (basis for the write-up): `docs/PROJECT_STORY.md`
@@ -40,6 +40,6 @@ No login required. See README, section "Reproducible testing".
 
 ## Before submitting
 
-- [ ] Push this repository to a new public GitHub repo and fill in the Code link
+- [x] Public GitHub repository created
 - [ ] Confirm the form's required fields, deadline and badge steps on the Register page
 - [ ] Check the live service still responds (`GET /health`)
