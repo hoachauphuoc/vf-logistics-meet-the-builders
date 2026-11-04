@@ -40,14 +40,16 @@ def bulk_shipments(count: int, run_tag: str) -> list[dict[str, Any]]:
     are randomised so the agents are scoring different shipments rather than the
     same one repeatedly.
 
-    A note on volume: each case costs one Gemini call minimum and three for a
-    full escalation, so this endpoint is capped low on purpose. The default of
-    10 is about 20 model calls and finishes in roughly a minute, which is enough
-    to show the worker draining a queue. Raising it to 1,000 would mean ~2,000
-    calls and over an hour without demonstrating anything the 10 does not.
+    A note on volume: each case costs two Gemini calls minimum (fraud detection
+    and compliance screening run in parallel) and three when an investigation
+    opens, so this endpoint is capped low on purpose. The default of 10 is about
+    20 model calls and finishes in roughly a minute, which is enough to watch a
+    queue drain. Raising it to 1,000 would mean ~2,000 calls and over an hour
+    without demonstrating anything the 10 does not.
 
-    Be aware that on this deployment the dominant cost is the always-on Cloud
-    Run instance, not the model calls.
+    The deployed service runs WORKER_MODE=ondemand with --min-instances=0, so it
+    costs nothing while idle and the model calls are the cost that scales with
+    volume.
     """
     lanes = [
         ("Ho Chi Minh City, Vietnam", "Singapore", 1_200, "Cat Lai -> PSA, direct"),

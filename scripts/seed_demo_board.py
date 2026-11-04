@@ -6,6 +6,11 @@ The bulk simulator draws profiles at random, so it cannot hit a target like
 individually shaped shipments to /api/v1/events/shipment and, after each one,
 recounts the board via /api/v1/orchestrator/state.
 
+WARNING: BASE below points at the live service. Running this script writes cases
+to the shared live board and spends Gemini calls on every shipment it posts. It
+exists for whoever maintains that board; to try it, change BASE to your own
+deployment first.
+
 Counting from the board rather than from the POST response is deliberate: the
 response state and the stored state can differ, because a case that the
 response reports as cleared may still be advanced afterwards. The board is the
@@ -56,7 +61,7 @@ EVENT_URL = f"{BASE}/api/v1/events/shipment"
 STATE_URL = f"{BASE}/api/v1/orchestrator/state"
 
 # Filled in this order; see module docstring. Override on the command line:
-#   python tools_seed_demo_board.py 4 2 2
+#   python scripts/seed_demo_board.py 4 2 2
 # A BLOCKED document case sits in the same "Awaiting human" column as a held
 # case but is not a HELD_FOR_REVIEW state, so a board that needs to read 4/3/2
 # on screen with one blocked case is seeded as 4/2/2 and blocked last.
@@ -226,10 +231,10 @@ def main() -> int:
             for bucket, value in zip(ORDER, sys.argv[1:]):
                 TARGETS[bucket] = int(value)
         except ValueError:
-            print("usage: tools_seed_demo_board.py [auto_cleared held escalated]")
+            print("usage: seed_demo_board.py [auto_cleared held escalated]")
             return 2
     elif len(sys.argv) != 1:
-        print("usage: tools_seed_demo_board.py [auto_cleared held escalated]")
+        print("usage: seed_demo_board.py [auto_cleared held escalated]")
         return 2
 
     print("Targets: " + "  ".join(f"{k}={TARGETS[k]}" for k in ORDER), flush=True)

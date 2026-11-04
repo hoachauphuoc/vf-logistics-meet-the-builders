@@ -7,13 +7,13 @@ exercise one mechanism rather than to look realistic:
   clean_bol.pdf       - complete paperwork, market-rate freight, shipper on file;
                         AUTO_CLEARED
   unknown_shipper_bol - identical quality of paperwork, tax ID we have never
-                        traded under; HELD_FOR_REVIEW
+                        traded under; HELD_FOR_REVIEW or PENDING_HUMAN
   identity_spoof_bol  - a real customer's tax ID presented under a different
-                        company name; ESCALATED
+                        company name; PENDING_HUMAN
   over_ceiling_bol    - low risk, compliance clear, declared value above the
                         delegated ceiling; release DENIED, PENDING_HUMAN
   dual_use_bol        - otherwise unremarkable, but a controlled HS code;
-                        ESCALATED on a deterministic floor
+                        PENDING_HUMAN on a deterministic floor
   dirty_bol.pdf       - missing tax ID, dual-use cargo, freight far below market,
                         transhipments added after booking; ESCALATED
   injected_bol.pdf    - carries a prompt-injection payload; blocked before the
@@ -22,12 +22,15 @@ exercise one mechanism rather than to look realistic:
 The first three are a matched set and the point of the exercise. The paperwork is
 of the same quality in all three; what differs is only whether the counterparty
 can be resolved against our own records, and each difference moves the outcome one
-step further from autonomous release. Judges can compare them directly.
+step further from autonomous release. Anyone can compare them directly.
 
 Outcomes are reproducible because each is driven by a deterministic floor in
-verifier.py or a gate in governance.py, not by model judgement. A fixture whose
-outcome depended on where the model landed between 40 and 70 would be documented
-as one thing and demonstrate another.
+verifier.py or a gate in governance.py, not by model judgement, with one
+exception: unknown_shipper_bol depends on how close the model's own score lands to
+the floor, and has been observed on both sides, so the README and
+test_documents.py accept either state for it. A fixture whose outcome depended on
+where the model landed between 40 and 70 would be documented as one thing and
+demonstrate another.
 
 Why an upload can clear at all: untrusted.py excludes `shipper_tx_count` from the
 document schema, so a document cannot assert its own shipper's trading history,

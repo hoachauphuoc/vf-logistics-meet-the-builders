@@ -14,30 +14,40 @@ A person sees only the cases that fall outside a policy a person published.
 **Why it is worth a look: the agents are not trusted.** A model here never
 decides on its own authority.
 
-| Strength | Evidence | Where to check |
-|---|---|---|
-| **Autonomous, end to end** | Three shipments with different risk profiles reached three different outcomes (`AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED`) in about 30 seconds with no human input. Four consecutive runs from a reset board gave the same three. | Test 3 |
-| **A model cannot talk its way past the controls** | `effective_risk = max(model_risk, deterministic floor)`. An agent coerced into `risk_score: 0` on a dual-use shipment still produced an effective risk of 90 and a case routed to a human. | [`verifier.py`](verifier.py), Test 4 |
-| **Prompt injection stopped before the model runs** | Model Armor screens the extracted text in overlapping windows before Gemini is invoked, and a second pattern-based screen runs even if Model Armor is unreachable, so the path fails closed. For the injected sample `security.model_invoked` is `false`. | [`model_armor.py`](model_armor.py), `injected_bol.pdf`, Test 6 |
-| **Authority is published, not earned** | A human publishes a versioned, machine-readable Delegation Boundary. With none in force the system is `SUSPENDED` and refuses every protected action. A clean shipment declared above the USD 25,000 ceiling is refused too. | [`governance.py`](governance.py), Tests 5 and 6 |
-| **A forged identity is worse than none** | A real customer's tax ID under a different company name is `identity_mismatch` (floor 75) against 45 for an unknown shipper. The fields a document could use to vouch for itself are excluded from its schema. | [`shipper_registry.py`](shipper_registry.py), [`untrusted.py`](untrusted.py) |
-| **Auditable** | Every agent hop records the model id and latency. The reviewer sees the shipper's original PDF, or a rendering labelled `SYSTEM-GENERATED` when there is none. | [`document_render.py`](document_render.py), screenshots 05 to 09 |
-| **Cost-aware by design** | Flash for the calls that decide, Flash-Lite for synthesis. Cases advance inside requests, so the service scales to zero instead of paying about 0.095 USD/hour for an always-on loop. | *Why these choices* |
-| **Reproducible, and honest about its limits** | Seven sample PDFs and one command that exits non-zero if any lands outside the outcome this README documents. A table says which parts of the design are deployed and which are not. | [`scripts/test_documents.py`](scripts/test_documents.py), *What is connected today* |
+| Strength | Evidence | Where to check | Read-only on the live service? |
+|---|---|---|---|
+| **Autonomous, end to end** | Three shipments with different risk profiles reached three different outcomes (`AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED`) in about 30 seconds with no human input. My own measurement: four consecutive runs from a reset board gave the same three. | Test 3, on your own deployment | The three outcomes are on the board: yes. Re-running them: no |
+| **A model cannot talk its way past the controls** | `effective_risk = max(model_risk, deterministic floor)`. On the live board one document scored 88 by the model has an effective risk of 90, another scored 15 has 85, and a third scored 12 has 75. All three went to a human or were escalated. | [`verifier.py`](verifier.py), Test 4 | Yes, command below |
+| **Prompt injection is screened before the agents act** | A PDF with a text layer is screened by Model Armor in overlapping windows before Gemini is invoked, and a blocked one is never transcribed (`security.model_invoked` is `false`). A scan has no text layer, so it is transcribed first and screened before any downstream agent, which is a weaker guarantee the case records. If Model Armor is unreachable the case goes to a human rather than being trusted. The backstop is the deterministic floor, not this screen. | [`model_armor.py`](model_armor.py), `injected_bol.pdf`, Test 6 | One blocked case is on the board: yes. The test itself: no |
+| **Authority is published, not earned** | A human publishes a versioned, machine-readable Delegation Boundary. With none in force the system is `SUSPENDED` and refuses every protected action; the live service runs under `BOUNDARY-v1`. A clean shipment declared above the USD 25,000 ceiling is refused too: `CASE-VFL-2026-88453`, risk 8, waits for a person. | [`governance.py`](governance.py), Tests 5 and 6 | Boundary and cases: yes. `SUSPENDED`: only on a new deployment |
+| **A forged identity is worse than none** | A real customer's tax ID under a different company name is `identity_mismatch` (floor 75) against 45 for an unknown shipper. The fields a document could use to vouch for itself are excluded from its schema. On the board `CASE-VFL-2026-88442`: model 12, effective 75. | [`shipper_registry.py`](shipper_registry.py), [`untrusted.py`](untrusted.py) | Yes |
+| **Auditable** | Every agent hop records the model id and latency. The reviewer sees the shipper's original PDF, or a rendering labelled `SYSTEM-GENERATED` when there is none. | [`document_render.py`](document_render.py), screenshots 05 to 09 | Yes, in the dashboard |
+| **Cost-aware by design** | Flash for the calls that decide, Flash-Lite for synthesis. Cases advance inside requests, so the service scales to zero instead of paying roughly 0.095 USD/hour, by my estimate, for an always-on loop. | *Why these choices* | Yes, `/health` shows `mode: ondemand` |
+| **Reproducible, and honest about its limits** | Seven sample PDFs and one command that exits non-zero if any lands outside the outcome this README documents. A table says which parts of the design are deployed and which are not. | [`scripts/test_documents.py`](scripts/test_documents.py), *What is connected today* | No: the script wipes the board it targets |
 
 **Google Cloud stack.** Gemini 3.5 Flash and Gemini 3.5 Flash-Lite on Vertex AI
 through the Google GenAI SDK, with Cloud Run, Firestore, Cloud Storage, Pub/Sub
 and Model Armor.
 
 **Check it in 60 seconds.** No login. These calls are read-only and leave the live
-board as it is:
+board as it is. The board is demo data and can change, so the figures above are
+those read on 2026-11-04.
 
 ```bash
 BASE=https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
-curl -s $BASE/health                               # healthy, store.backend: firestore
-curl -s $BASE/agents                               # four agents, two models
-curl -s "$BASE/api/v1/orchestrator/state?drain=0"  # live cases with effective_risk and outcomes
+curl -s $BASE/health                  # status healthy, store.backend firestore, mode ondemand
+curl -s $BASE/agents                  # four agents: three on gemini-3.5-flash, one on gemini-3.5-flash-lite
+curl -s $BASE/api/v1/governance/agent # state READY under BOUNDARY-v1
+curl -s "$BASE/api/v1/orchestrator/state?drain=0" | python -c "
+import sys, json
+for c in json.load(sys.stdin)['cases']:
+    r = c.get('reconciliation') or {}
+    print(c['case_id'], c['state'], 'model', r.get('model_risk'), 'floor', r.get('risk_floor'), 'effective', r.get('effective_risk'))"
 ```
+
+The last call lists every case with the model's score, the deterministic floor and
+the effective risk, which is the maximum of the two. `drain=0` keeps it a pure
+read, because a plain state call also runs one pending case.
 
 **Honest limits.** `vf-executor` is deployed but not connected, the
 `case-decisions` topic has no subscriber yet, sanctions screening is the model's
@@ -56,7 +66,7 @@ section *What is connected today* has the detail.
 
 A multi-agent system that screens logistics shipments for fraud, sanctions/trade
 compliance violations, and runs deep-dive investigations — without a human
-walking it through each step. Built 100% on Google Cloud: Gemini 3.5 Flash and
+walking it through each step. Runs entirely on Google Cloud services: Gemini 3.5 Flash and
 Gemini 3.5 Flash-Lite on Vertex AI + Cloud Run + Firestore + Pub/Sub +
 Cloud Storage + Model Armor.
 
@@ -150,9 +160,13 @@ Those checks produce a **risk floor**, and the governing rule is asymmetric:
 
 Escalating on model judgement is acceptable; exonerating on model judgement is
 not, because a wrong exoneration releases contraband and a wrong escalation costs
-a reviewer ten minutes. Measured on the deployed service: an agent coerced into
-returning `risk_score: 0` for a dual-use shipment still produced an effective
-risk of 90, `auto_clear_permitted: false`, and a case routed to a human.
+a reviewer ten minutes. The live board shows the rule holding: the dual-use
+document `CASE-VFL-2026-88464` has a model score of 15, a floor of 85 and an
+effective risk of 85, and it waits for a person; the identity-spoof document
+`CASE-VFL-2026-88442` has 12, 75 and 75. The command under *Check it in 60
+seconds* lists them. An earlier test that coerced an agent into returning
+`risk_score: 0` for a dual-use shipment recorded an effective risk of 90; that run
+is not reproducible from the board as it stands now.
 
 Three inputs are deliberately excluded from the document schema in
 [`untrusted.py`](untrusted.py): `avg_route_cost`, `shipper_tx_count` and
@@ -336,7 +350,7 @@ topic.
        Every action passes the execution gate first; a refused action sends
        the case to PENDING_HUMAN.
 
-       Any step failing 3 times, with 5s/10s/20s backoff --> DEAD_LETTER
+       Any step failing 3 times, retried after 5s then 10s --> DEAD_LETTER
 
        Terminal decisions are published to Pub/Sub case-decisions, where ERP /
        WMS / billing would subscribe (none does yet), and every action lands
@@ -594,6 +608,14 @@ system degrades honestly instead: `security.model_armor.available` reports
 the injection, and the case is still held for a human. If you want to see Model
 Armor itself return `MATCH_FOUND`, grant the role.
 
+The deploy command does not create the Model Armor template either. The service
+looks for one named `vf-document-intake` in `MODEL_ARMOR_LOCATION`, and
+[`infra/model_armor_template.json`](infra/model_armor_template.json) holds the
+filter settings it expects. Without a template the screen cannot run, so
+`model_armor.py` reports the gate as unavailable rather than trusting the document.
+Create the template in the Model Armor console or API with those settings, or set
+`MODEL_ARMOR_TEMPLATE` to an empty value to run without the gate.
+
 Provision the state store, the document bucket and the topics:
 
 ```bash
@@ -738,7 +760,9 @@ curl -s "$BASE/api/v1/orchestrator/state?drain=0" | grep -o '"effective_risk":[0
 ```
 
 On the escalated case, `effective_risk` stays at or above the floor even when
-`model_risk` is lower — `effective_risk = max(model_risk, floor)`.
+`model_risk` is lower — `effective_risk = max(model_risk, floor)`. The call under
+*Check it in 60 seconds* prints all three values per case: on 2026-11-04 it showed
+model 15 against effective 85, and model 12 against effective 75.
 
 ### Test 5 — fail-closed governance
 
@@ -747,8 +771,10 @@ curl -s $BASE/api/v1/governance/boundaries
 ```
 
 With no active boundary the system reports `SUSPENDED`: agents still analyse and
-propose, but every protected action is refused. On your own deployment, publish
-one via `POST /api/v1/governance/publish` and the same case executes.
+propose, but every protected action is refused. The live service has a boundary in
+force, so there `GET /api/v1/governance/agent` reports `state: READY` under
+`BOUNDARY-v1`; `SUSPENDED` is what a new deployment shows until you publish one
+via `POST /api/v1/governance/publish`, after which the same case executes.
 
 ### Test 6 — document intake, seven documents, one command
 
@@ -852,7 +878,7 @@ which shows the per-case trace with the real model id and latency on every hop.
 | `DOCUMENT_BUCKET` | Cloud Storage bucket for document archive and stage ingestion. **Set this** — without it no case keeps a reviewable document, and the review panel has nothing to show a human | unset |
 | `MODEL_ARMOR_TEMPLATE` | Model Armor template id; set to an empty value to disable the gate | `vf-document-intake` |
 | `MODEL_ARMOR_LOCATION` | Model Armor region | `asia-southeast1` |
-| `MODEL_ARMOR_WINDOW_CHARS` | Screening window size — see the findings section for why windowing is required | `400` |
+| `MODEL_ARMOR_WINDOW_CHARS` | Screening window size. The filter missed an injection inside a 1,150-character document that it flagged when the same text was sent alone, so documents are screened in overlapping pieces as well as whole (`_windows()` in `model_armor.py`) | `400` |
 | `MODEL_ARMOR_MAX_CHARS` | Ceiling on how much document text is screened | `20000` |
 | `EXECUTOR_URL` | Executor service URL; unset means no identity split. Unset on the deployed service, so `publish_decision` runs under the analysis identity | unset |
 | `DECISIONS_TOPIC` | Pub/Sub topic for published decisions | `case-decisions` |
@@ -1040,7 +1066,7 @@ original event are painted out of its header.
 ```
 .
 ├── main.py                       Flask app, routes, async bridge, worker boot
-├── orchestrator.py               Autonomous state machine + background worker
+├── orchestrator.py               Request-driven state machine (optional poll loop)
 ├── config.py                     Model registry, per-token pricing, runtime switch
 ├── governance.py                 Delegation Boundary + fail-closed execution gate
 ├── verifier.py                   Deterministic risk floor (no model consulted)
@@ -1055,7 +1081,7 @@ original event are painted out of its header.
 ├── simulator.py                  Scripted shipment events for the demo
 ├── scripts/                      Not deployed; data generation and verification
 │   ├── make_sample_docs.py       Generates the seven sample bills of lading
-│   ├── seed_demo_board.py        Seeds the board to an exact outcome mix
+│   ├── seed_demo_board.py        Seeds a board to an exact outcome mix; BASE points at the live service, so change it first
 │   ├── test_documents.py         Uploads every sample doc, checks the README table
 │   └── check_registry.py         Self-check for the counterparty book
 ├── sample_docs/                  Seven committed sample PDFs, one per mechanism

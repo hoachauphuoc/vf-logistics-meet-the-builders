@@ -93,8 +93,8 @@ topic yet), **Cloud Storage** for document archival, and **Model Armor** for
 injection screening. A separate executor service is deployed but not yet
 connected, so every action still runs under the analysis identity.
 `WORKER_MODE=ondemand` advances cases inside the request handler, which lets the
-service run at `--min-instances=0` and scale to zero between judged runs — a
-hackathon project should not bill for idle time.
+service run at `--min-instances=0` and scale to zero when nothing is arriving —
+a demo that nobody is watching should not bill for idle time.
 
 One piece was added late and turned out to matter more than expected: **every
 case gets a bill of lading a human can read.** An uploaded original is archived
@@ -215,9 +215,11 @@ stable on one sample and being contradicted by the next.
 
 ## Accomplishments that we're proud of
 
-The injection defence is real and reproducible in one command against a public
-URL. The risk floor cannot be talked down, because no model participates in
-computing it. The delegation boundary means the honest answer to "what can this
+The injection defence is real and reproducible in one command on your own
+deployment: the sample set includes a document that tells the model to score
+itself zero, and it is stopped before any model sees it. The live board shows the
+outcome as a case awaiting a person. The risk floor cannot be talked down, because
+no model participates in computing it. The delegation boundary means the honest answer to "what can this
 thing do without asking" is a document with a version and a human's name on it.
 
 And the failure modes are legible. When Model Armor was returning 403, the system

@@ -12,8 +12,8 @@ edge.
 
 That distinction is what keeps this both autonomous and governable. The human
 does not approve shipments one at a time - that would just be a slow human
-process with extra steps. The human approves *policy*, once, and thousands of
-cases execute against it without supervision. Only cases that fall outside the
+process with extra steps. The human approves *policy*, once, and cases execute
+against it without supervision. Only cases that fall outside the
 published boundary come back to a person.
 
 Three properties are deliberate:
@@ -28,7 +28,7 @@ Three properties are deliberate:
   the time rather than the policy in force now.
 
 * **The gateway is the only door.** `tools.py` is not called from the workflow
-  any more. Everything goes through `AgentGateway.execute`, which refuses
+  any more. Everything goes through `execute` in this module, which refuses
   anything the gate has not explicitly allowed.
 """
 

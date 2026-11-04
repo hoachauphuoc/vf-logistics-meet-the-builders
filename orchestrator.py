@@ -1114,9 +1114,10 @@ async def _fail(case: dict[str, Any], exc: Exception) -> None:
         )
         return
 
-    # 5s, 10s, 20s. The earlier 2s base burned all three attempts inside a few
-    # seconds, which dead-lettered cases faster than any transient fault could
-    # clear.
+    # 5s, then 10s. The third failure dead-letters the case above, before a
+    # third delay would apply. The earlier 2s base burned all three attempts
+    # inside a few seconds, which dead-lettered cases faster than any transient
+    # fault could clear.
     backoff = 5 * (2 ** (case["attempts"] - 1))
     from datetime import datetime, timedelta, timezone
 

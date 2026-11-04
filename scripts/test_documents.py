@@ -2,7 +2,7 @@
 Upload every sample bill of lading and report the outcome of each.
 
 This is the script that produced the outcome table in the README. It is the same
-one a judge runs, on their own deployment of the same code, so a mismatch between
+one a reader runs, on their own deployment of the same code, so a mismatch between
 the table and their result is a bug in one of the two rather than a difference in
 method.
 
@@ -70,7 +70,7 @@ SAMPLE_DIR = Path(__file__).resolve().parent.parent / "sample_docs"
 # on purpose. Its outcome turns on the score_disputed trigger, which fires when
 # the deterministic floor exceeds the model score by 15 or more - so it depends on
 # a model judgement near a threshold, and it has been observed landing either side.
-# Pinning it to one state would produce a README that a judge could fairly call
+# Pinning it to one state would produce a README that a reader could fairly call
 # wrong. Both states are correct behaviour: one queues the case for review, the
 # other escalates it to a human because the two sources of truth disagreed.
 #

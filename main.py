@@ -1,6 +1,6 @@
 """
 VF Logistics Fraud Detection - Main Flask Application
-Built 100% on Google Cloud: Cloud Run + Gemini 3.5 Flash on Vertex AI
+Runs on Google Cloud services: Cloud Run + Gemini 3.5 Flash on Vertex AI
 
 """
 
@@ -49,7 +49,7 @@ def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ============== BACKGROUND WORKER ==============
+# ============== WORKER EVENT LOOP ==============
 #
 # Every coroutine in the process runs on this one loop, including Flask request
 # handlers via async_route below. Handlers used to call asyncio.run(), which
@@ -66,7 +66,7 @@ _worker_lock = threading.Lock()
 
 
 def _ensure_worker() -> asyncio.AbstractEventLoop:
-    """Start the background loop once, on first use."""
+    """Start the shared worker event loop once, on first use."""
     global _worker_loop
     with _worker_lock:
         if _worker_loop and _worker_loop.is_running():
@@ -869,5 +869,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
 else:
-    # Under gunicorn: start the background worker as the module is imported.
+    # Under gunicorn: start the shared worker loop as the module is imported.
     _ensure_worker()
