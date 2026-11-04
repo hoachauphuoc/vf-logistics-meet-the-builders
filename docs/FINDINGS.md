@@ -55,19 +55,19 @@ one upload path to keep correct rather than two that drift apart.
 `asia-southeast1` both returned `404 NOT_FOUND` for
 `publishers/google/models/gemini-3.5-flash`. Only `locations/global` served it.
 The 404 message ("was not found **or your project does not have access to it**")
-reads like an entitlement problem, which sent us looking at IAM before we
-checked the endpoint — worth knowing.
+reads like an entitlement problem, which sent the author looking at IAM before
+checking the endpoint — worth knowing.
 
 **`ThinkingConfig` field is `thinking_budget`, not `thinking_budget_tokens`.**
 The wrong name raises a pydantic validation error *before* any network call, so
 the endpoint failed in ~3 ms. That latency in the Cloud Run request log is the
-tell: a model failure would have taken seconds. I found the real field with
+tell: a model failure would have taken seconds. The real field turned up with
 `python -c "import google.genai.types as t; print(list(t.ThinkingConfig.model_fields))"`.
 
 **Cloud Build source deploys need three separate grants.** The default compute
 service account needs `storage.objectAdmin` (read the uploaded source zip),
 `artifactregistry.writer` (push the image) and `logging.logWriter` (or build
-logs vanish, which is how I ended up debugging a "FAILURE" build with no log
+logs vanish, which led to debugging a "FAILURE" build with no log
 output at all). A build whose docker step reports `SUCCESS` but produces no
 entry under `results.images` has failed at push, not at build.
 
@@ -77,6 +77,6 @@ re-parsed prose, so adding a fourth agent is a routing change rather than a
 parsing project.
 
 **Design insight:** this started as SQL predicates over historical aggregates.
-Moving to Gemini let us delete most of that and describe the *intent* instead —
+Moving to Gemini made it possible to delete most of that and describe the *intent* instead —
 but it also means the output is no longer deterministic, so `temperature=0.1`
 and an explicit `confidence` field in the schema are doing real work.

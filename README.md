@@ -16,13 +16,13 @@ decides on its own authority.
 
 | Strength | Evidence | Where to check | Read-only on the live service? |
 |---|---|---|---|
-| **Autonomous, end to end** | Three shipments with different risk profiles reached three different outcomes (`AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED`) in about 30 seconds with no human input. My own measurement: four consecutive runs from a reset board gave the same three. | Test 3, on your own deployment | The three outcomes are on the board: yes. Re-running them: no |
+| **Autonomous, end to end** | Three shipments with different risk profiles reached three different outcomes (`AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED`) in about 30 seconds with no human input. Measured by the author: four consecutive runs from a reset board gave the same three. | Test 3, on your own deployment | The three outcomes are on the board: yes. Re-running them: no |
 | **A model cannot talk its way past the controls** | `effective_risk = max(model_risk, deterministic floor)`. On the live board one document scored 88 by the model has an effective risk of 90, another scored 15 has 85, and a third scored 12 has 75. All three went to a human or were escalated. | [`verifier.py`](verifier.py), Test 4 | Yes, command below |
 | **Prompt injection is screened before the agents act** | A PDF with a text layer is screened by Model Armor in overlapping windows before Gemini is invoked, and a blocked one is never transcribed (`security.model_invoked` is `false`). A scan has no text layer, so it is transcribed first and screened before any downstream agent, which is a weaker guarantee the case records. If Model Armor is unreachable the case goes to a human rather than being trusted. The backstop is the deterministic floor, not this screen. | [`model_armor.py`](model_armor.py), `injected_bol.pdf`, Test 6 | One blocked case is on the board: yes. The test itself: no |
 | **Authority is published, not earned** | A human publishes a versioned, machine-readable Delegation Boundary. With none in force the system is `SUSPENDED` and refuses every protected action; the live service runs under `BOUNDARY-v1`. A clean shipment declared above the USD 25,000 ceiling is refused too: `CASE-VFL-2026-88453`, risk 8, waits for a person. | [`governance.py`](governance.py), Tests 5 and 6 | Boundary and cases: yes. `SUSPENDED`: only on a new deployment |
 | **A forged identity is worse than none** | A real customer's tax ID under a different company name is `identity_mismatch` (floor 75) against 45 for an unknown shipper. The fields a document could use to vouch for itself are excluded from its schema. On the board `CASE-VFL-2026-88442`: model 12, effective 75. | [`shipper_registry.py`](shipper_registry.py), [`untrusted.py`](untrusted.py) | Yes |
 | **Auditable** | Every agent hop records the model id and latency. The reviewer sees the shipper's original PDF, or a rendering labelled `SYSTEM-GENERATED` when there is none. | [`document_render.py`](document_render.py), screenshots 05 to 09 | Yes, in the dashboard |
-| **Cost-aware by design** | Flash for the calls that decide, Flash-Lite for synthesis. Cases advance inside requests, so the service scales to zero instead of paying roughly 0.095 USD/hour, by my estimate, for an always-on loop. | *Why these choices* | Yes, `/health` shows `mode: ondemand` |
+| **Cost-aware by design** | Flash for the calls that decide, Flash-Lite for synthesis. Cases advance inside requests, so the service scales to zero instead of paying roughly 0.095 USD/hour, by the author's estimate, for an always-on loop. | *Why these choices* | Yes, `/health` shows `mode: ondemand` |
 | **Reproducible, and honest about its limits** | Seven sample PDFs and one command that exits non-zero if any lands outside the outcome this README documents. A table says which parts of the design are deployed and which are not. | [`scripts/test_documents.py`](scripts/test_documents.py), *What is connected today* | No: the script wipes the board it targets |
 
 **Google Cloud stack.** Gemini 3.5 Flash and Gemini 3.5 Flash-Lite on Vertex AI
@@ -172,7 +172,7 @@ history sets a floor of 45, above the auto-clear threshold of 40, so for a while
 *no* uploaded or staged document could clear autonomously — the control was
 written around an enrichment step that did not exist yet.
 [`shipper_registry.py`](shipper_registry.py) is that step: it resolves the
-claimed shipper against our own counterparty book and supplies the trading
+claimed shipper against the operator's own counterparty book and supplies the trading
 history the document is not allowed to assert about itself. Identity must match
 on tax ID **and** company name together, because the tax ID is itself read off
 the untrusted document — a forged bill of lading carrying a real customer's
@@ -182,7 +182,7 @@ worse than unknown.
 
 The withheld fields are also reported to the fraud agent as *not available*
 rather than as a bare `N/A`, with an instruction that their absence says nothing
-about the shipment. Showing an unexplained blank made the agent read our own
+about the shipment. Showing an unexplained blank made the agent read its own
 intake rule as evidence against the shipper: it called a missing creation
 timestamp "highly anomalous, could indicate manual record insertion" and scored a
 well-formed bill of lading at 52 — high enough to hold it. The value is still
@@ -573,7 +573,7 @@ response, so expect 30 to 60 seconds per document.
 
 The first three are a matched set and the most useful comparison in the project.
 The paperwork is of equal quality in all three; what differs is only whether the
-counterparty resolves against our own records. Known shipper releases itself.
+counterparty resolves against the operator's own records. Known shipper releases itself.
 Unknown shipper waits. A shipper presenting someone else's tax number is treated
 as worse than unknown, not better — which is the whole reason
 [`shipper_registry.py`](shipper_registry.py) matches on tax ID *and* company name
@@ -724,7 +724,7 @@ original event are painted out of its header.
 
 This repository is a copy of
 [CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
-which I originally built for the All Things Agentic Hackathon 2026. The code and
+which the author originally built for the All Things Agentic Hackathon 2026. The code and
 architecture are the same work by the same author. This copy only removes the
 branding of that event, adds an MIT `LICENSE`, and rewrites `SUBMISSION.md` for
 Google Gen AI Academy APAC — Meet the Builders. The original repository and its
