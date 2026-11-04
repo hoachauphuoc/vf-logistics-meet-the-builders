@@ -3,6 +3,14 @@
 **Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
 **Live URL:** https://vf-fraud-detection-304507056252.asia-southeast1.run.app
 
+> **Origin of this project.** This repository is a copy of
+> [CHAUPHUOCHOA/vf-logistics-hackathon-google](https://github.com/CHAUPHUOCHOA/vf-logistics-hackathon-google),
+> which I originally built for the All Things Agentic Hackathon 2026. The code and
+> architecture are the same work by the same author. This copy only removes the
+> branding of that event, adds an MIT `LICENSE`, and rewrites `SUBMISSION.md` for
+> Google Gen AI Academy APAC — Meet the Builders. The original repository and its
+> commit history remain the source of record.
+
 A multi-agent system that screens logistics shipments for fraud, sanctions/trade
 compliance violations, and runs deep-dive investigations — without a human
 walking it through each step. Built 100% on Google Cloud: Gemini 3.5 Flash and
