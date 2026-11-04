@@ -2,8 +2,9 @@
 Upload every sample bill of lading and report the outcome of each.
 
 This is the script that produced the outcome table in the README. It is the same
-one a judge runs, on the same deployed service, so a mismatch between the table
-and their result is a bug in one of the two rather than a difference in method.
+one a judge runs, on their own deployment of the same code, so a mismatch between
+the table and their result is a bug in one of the two rather than a difference in
+method.
 
 Each document is uploaded to /api/v1/events/document. WORKER_MODE=ondemand means
 the request returns only once the case has reached a terminal state, so no polling
@@ -14,16 +15,24 @@ document and ingestion is idempotent on shipment id, so uploading the same file
 twice without a reset returns the first case unchanged rather than re-running it.
 That is correct behaviour and it is also why a repeat pass needs the reset.
 
-Usage:
-    python scripts/test_documents.py            # one pass
-    python scripts/test_documents.py 3          # three passes, reports agreement
+The reset deletes every case, event and audit record on the target, so --base is
+required and there is no default. The live board is shared demo data: the script
+refuses it before sending anything, unless --confirm-wipe-live-board is also given.
 
-Exits non-zero if any document lands outside its expected state(s), or if
-repeated passes disagree where a single state was expected.
+A new deployment has no delegation boundary, and without one every document stops
+at PENDING_HUMAN. Publish the default template first; the README shows how.
+
+Usage:
+    python scripts/test_documents.py --base URL      # one pass
+    python scripts/test_documents.py --base URL 3    # three passes, reports agreement
+
+Exits non-zero if any document lands outside its expected state(s), if repeated
+passes disagree where a single state was expected, or if it refuses the target.
 """
 
 from __future__ import annotations
 
+import argparse
 import http.client
 import io
 import json
@@ -33,8 +42,19 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
-BASE = "https://vf-meet-the-builders-304507056252.asia-southeast1.run.app"
+# The shared demo board lives in one project's Firestore, so a reset reaches it
+# through every Cloud Run service in that project, under either URL form Cloud Run
+# issues. Matching the project's part of the hostname covers all of them, and a
+# deployment in another project never matches, even under the same service name.
+LIVE_HOST_SUFFIXES = (
+    "-304507056252.asia-southeast1.run.app",
+    "-bdg2ip66aa-as.a.run.app",
+)
+
+# Set by main() from --base, and only once that URL has passed the live check.
+BASE = ""
 
 # Resolved from this file, not the working directory, so the script runs the same
 # from the repository root or from inside scripts/.
@@ -84,6 +104,10 @@ TERMINAL = {"AUTO_CLEARED", "HELD_FOR_REVIEW", "ESCALATED", "PENDING_HUMAN",
             "DEAD_LETTER"}
 
 
+def is_live(base: str) -> bool:
+    """Whether this URL reaches the shared demo board, whatever its case or port."""
+    host = (urlsplit(base).hostname or "").rstrip(".")
+    return host.endswith(LIVE_HOST_SUFFIXES)
 
 
 def post_json(path: str, body: dict | None = None) -> dict:
@@ -158,7 +182,7 @@ def await_case(shipment_id: str, timeout_s: int = 240) -> dict | None:
 
 
 def board() -> dict[str, dict]:
-    """Cases from the live board, keyed by shipment id."""
+    """Cases currently on the target board, keyed by shipment id."""
     with urllib.request.urlopen(BASE + "/api/v1/orchestrator/state",
                                 timeout=120) as resp:
         cases = json.load(resp)["cases"]
@@ -238,16 +262,40 @@ def one_pass(index: int, total: int) -> dict[str, tuple[str, str]]:
 
 
 def main() -> int:
-    passes = 1
-    if len(sys.argv) == 2:
-        try:
-            passes = int(sys.argv[1])
-        except ValueError:
-            print("usage: tools_test_documents.py [passes]")
-            return 2
-    elif len(sys.argv) != 1:
-        print("usage: tools_test_documents.py [passes]")
+    global BASE
+
+    parser = argparse.ArgumentParser(
+        description="Upload every sample document to a deployment and compare each "
+                    "outcome with the README. Every pass first deletes all cases, "
+                    "events and audit records on that deployment.",
+        # A confirmation flag has to be typed in full, not abbreviated to --c.
+        allow_abbrev=False,
+    )
+    parser.add_argument("passes", nargs="?", type=int, default=1,
+                        help="how many passes to run (default: 1)")
+    parser.add_argument("--base", required=True, metavar="URL",
+                        help="your own deployment, such as https://YOUR-SERVICE-URL")
+    parser.add_argument("--confirm-wipe-live-board", action="store_true",
+                        help="allow --base to be the shared live board, which is "
+                             "otherwise refused")
+    args = parser.parse_args()
+
+    # A value that does not parse to a host could not be recognised as the live
+    # service, so it is rejected here rather than treated as some other deployment.
+    target = urlsplit(args.base)
+    if target.scheme not in ("http", "https") or not target.hostname:
+        parser.error(f"--base needs a full http(s) URL, got {args.base!r}")
+
+    if is_live(args.base) and not args.confirm_wipe_live_board:
+        print(f"refusing to run: {args.base} is the shared live demo board.\n"
+              "Every pass starts by deleting all of its cases, events and audit "
+              "records. Nothing was sent.\n"
+              "Point --base at your own deployment, or add "
+              "--confirm-wipe-live-board if you mean to wipe it.", file=sys.stderr)
         return 2
+
+    BASE = args.base.rstrip("/")
+    passes = args.passes
 
     observed = [one_pass(i + 1, passes) for i in range(passes)]
 
@@ -277,8 +325,9 @@ def main() -> int:
     if failures:
         print(f"{failures} of {len(DOCUMENTS)} landed outside their expected "
               f"state(s) across {passes} pass(es).")
-        print("If this is a fresh clone against the public URL, the README table "
-              "is wrong and should be corrected rather than explained away.")
+        print("If this is a fresh clone with the default boundary published, the "
+              "README table is wrong and should be corrected rather than "
+              "explained away.")
     else:
         print(f"All {len(DOCUMENTS)} documents matched across {passes} pass(es).")
 

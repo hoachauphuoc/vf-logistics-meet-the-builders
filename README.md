@@ -390,7 +390,7 @@ recorded and the background worker carries it on.
 | `/api/v1/orchestrator/state` | GET | Full dashboard projection: cases, events, audit, counters |
 | `/api/v1/orchestrator/case/<case_id>` | GET | One case with every agent hop, latency and action receipt |
 | `/api/v1/orchestrator/tick` | POST | Advance the pipeline one step, for a script or Cloud Scheduler to call. In `WORKER_MODE=poll` the background loop does this. |
-| `/api/v1/orchestrator/reset` | POST | Clear all cases, events and audit records. Published delegation boundaries deliberately survive: clearing a board is a demo convenience, revoking authority is not. |
+| `/api/v1/orchestrator/reset` | POST | Clear all cases, events and audit records. Published delegation boundaries deliberately survive: clearing a board is a demo convenience, revoking authority is not. Not for the live URL, whose board is shared demo data. |
 | `/api/v1/orchestrator/drain` | POST | Run every pending case to a terminal state. The explicit lever for `WORKER_MODE=ondemand` — usable from Cloud Scheduler or to clear a backlog without waiting for the dashboard to poll it away one case at a time. |
 | `/api/v1/events/document` | POST | Document intake. Multipart `file` (PDF or image). Screens for injection, transcribes, archives the original, then runs the case to a terminal state in the same request. |
 | `/api/v1/events/storage` | POST | Cloud Storage notification sink — ingests a document dropped straight into the bucket. No subscription connects `shipment-documents` to this endpoint in the deployed project. |
@@ -609,13 +609,17 @@ gcloud run services delete vf-meet-the-builders --region asia-southeast1
 
 ## Reproducible testing
 
-Tests 1, 2 and 4 and the read-only call in Test 5 run against the live service
-with no setup. Replace `$BASE` with your own URL if you deployed your own copy.
+Tests 1, 2 and 4, the read-only call in Test 5 and the zero-setup path are safe on
+the live service: they need no setup and leave the board as it is. Test 2 does run
+the agents, but their direct endpoints never write to the board. Replace `$BASE`
+with your own URL if you deployed your own copy.
 
-> **Tests 3 and 6 wipe the board.** They reset every case, event and audit record
-> on the service they point at, and the live service holds the demo cases shown in
-> the video. Run them on your own deployment, not on the live URL. The same goes
-> for publishing a boundary in Test 5.
+> **Test 3, Test 6 and publishing a boundary in Test 5 are for your own deployment,
+> not the live URL.** The live board is shared demo data: the cases shown in the
+> screenshots and the video. Test 3 adds cases to it, Test 6 deletes every case,
+> event and audit record on it, and publishing replaces the boundary in force. The
+> live dashboard is there to browse. **Clear board**, the inject and upload buttons,
+> **Publish delegation boundary** and the review decisions all change that data.
 
 ```bash
 BASE=https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
@@ -654,27 +658,40 @@ curl -s -X POST $BASE/api/v1/investigation/case \
 
 ### Test 3 — the autonomous pipeline, one call and no further input
 
-Run this on your own deployment: the first line clears the board.
+Run this on your own deployment: `simulate` adds three cases to whichever board it
+reaches. It needs no reset, because each run gets its own shipment ids and the
+response lists the new `case_ids`. The block uses `$OWN_BASE` rather than `$BASE`
+so that pasting it cannot reach the live service.
+
+A new deployment has no boundary, and without one every case stops at
+`PENDING_HUMAN`, so publish the default template first. It is the template the live
+service runs under.
 
 ```bash
-curl -s -X POST $BASE/api/v1/orchestrator/reset
-curl -s -X POST $BASE/api/v1/simulate
+OWN_BASE=https://YOUR-SERVICE-URL   # printed by gcloud run deploy; never the live URL
+
+# Once per deployment.
+curl -s -X POST $OWN_BASE/api/v1/governance/publish \
+  -H 'Content-Type: application/json' -d '{"author":"YOUR NAME"}'
+
+curl -s -X POST $OWN_BASE/api/v1/simulate
 
 # Poll. Each poll also runs one pending case to completion (WORKER_MODE=ondemand).
-curl -s $BASE/api/v1/orchestrator/state
+curl -s $OWN_BASE/api/v1/orchestrator/state
 ```
 
-Repeat the state call until all three cases are terminal. Expect exactly three
+Repeat the state call until the three new cases are terminal. Expect exactly three
 different outcomes — `AUTO_CLEARED`, `HELD_FOR_REVIEW`, `ESCALATED` — from the
 same code path with no human decision in between.
 
 ### Test 4 — the risk floor cannot be argued down
 
-Send a dual-use shipment whose fields invite a low score. The verifier's
-deterministic floor overrides whatever the model returns:
+Read the cases already on the board. `drain=0` keeps the call a pure read, because
+a plain state call also runs one pending case. The verifier's deterministic floor
+overrides whatever the model returns:
 
 ```bash
-curl -s $BASE/api/v1/orchestrator/state | grep -o '"effective_risk":[0-9]*'
+curl -s "$BASE/api/v1/orchestrator/state?drain=0" | grep -o '"effective_risk":[0-9]*'
 ```
 
 On the escalated case, `effective_risk` stays at or above the floor even when
@@ -687,23 +704,26 @@ curl -s $BASE/api/v1/governance/boundaries
 ```
 
 With no active boundary the system reports `SUSPENDED`: agents still analyse and
-propose, but every protected action is refused. Publish one via
-`POST /api/v1/governance/publish` and the same case executes.
+propose, but every protected action is refused. On your own deployment, publish
+one via `POST /api/v1/governance/publish` and the same case executes.
 
 ### Test 6 — document intake, seven documents, one command
 
-Seven bills of lading are committed to the repo, so this needs no setup beyond
-cloning. Each is a real PDF, not a fixture stub, and each isolates one mechanism.
+Seven bills of lading are committed to the repo, so the only setup is a deployment
+of your own with the default boundary published, as in Test 3. Each is a real PDF,
+not a fixture stub, and each isolates one mechanism.
 
-The script resets the board and its `BASE` constant points at the live service, so
-change `BASE` to your own deployment before running it.
+Run this on your own deployment: every pass starts by deleting every case, event
+and audit record on the target. `--base` is required, and the script refuses the
+live service before sending anything unless you also pass
+`--confirm-wipe-live-board`, which exists for whoever maintains that board.
 
 ```bash
-python scripts/test_documents.py        # one pass, ~5 minutes
-python scripts/test_documents.py 3      # three passes, reports any disagreement
+python scripts/test_documents.py --base $OWN_BASE      # one pass, ~5 minutes
+python scripts/test_documents.py --base $OWN_BASE 3    # three passes, reports any disagreement
 ```
 
-That script resets the board, uploads each document, and prints the state next to
+Each pass resets the board, uploads each document, and prints the state next to
 the state this README claims — so a disagreement between the two is visible
 immediately rather than something a reader has to take on trust. It exits non-zero
 if any document lands outside its documented outcome. It is the same script that
