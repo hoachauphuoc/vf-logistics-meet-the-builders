@@ -307,7 +307,12 @@ def simulate():
         return jsonify({
             "injected": len(cases),
             "case_ids": cases,
-            "note": "Workflow is running in the background; poll /api/v1/orchestrator/state"
+            "note": (
+                "Cases are queued; each poll of /api/v1/orchestrator/state "
+                "advances the next one."
+                if orchestrator.WORKER_MODE != "poll"
+                else "Workflow is running in the background; poll /api/v1/orchestrator/state"
+            )
         }), 202
 
     except Exception as e:
@@ -379,7 +384,7 @@ def event_document():
 
     Accepts a PDF or scanned image as multipart form-data under `file`. Gemini
     3.5 Flash transcribes it into a shipment record, the original is archived to
-    Cloud Storage for audit, and the background worker takes it from there.
+    Cloud Storage for audit, and the orchestrator takes it from there.
 
     This is the realistic event source: in production a document lands, not a
     tidy JSON payload.
@@ -450,9 +455,14 @@ def simulate_bulk():
             "capped_at": cap if requested > cap else None,
             "profile_mix": _profile_mix(shipments),
             "note": (
-                "Cases are queued; the background worker drains them at "
-                f"{orchestrator.MAX_CONCURRENT} at a time. Poll "
-                "/api/v1/orchestrator/state."
+                "Cases are queued; each poll of /api/v1/orchestrator/state "
+                "advances the next one."
+                if orchestrator.WORKER_MODE != "poll"
+                else (
+                    "Cases are queued; the background worker drains them at "
+                    f"{orchestrator.MAX_CONCURRENT} at a time. Poll "
+                    "/api/v1/orchestrator/state."
+                )
             )
         }), 202
 
@@ -680,7 +690,6 @@ def review_document(case_id: str):
 # directly and holds pubsub.publisher on case-decisions. IAM separates the two
 # identities only once that grant is removed as well. See executor_client.py.
 
-@app.route("/internal/execute", methods=["POST"])
 def internal_execute():
     """Perform a protected action on behalf of the analysis runtime."""
     try:
@@ -707,6 +716,13 @@ def internal_execute():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# Only the executor service, deployed with SERVICE_ROLE=executor, has this route.
+# Every other deployment of this codebase leaves it out, so there the path is an
+# unknown URL.
+if os.getenv("SERVICE_ROLE") == "executor":
+    app.add_url_rule("/internal/execute", view_func=internal_execute, methods=["POST"])
 
 
 @app.route("/api/v1/events/storage", methods=["POST"])
