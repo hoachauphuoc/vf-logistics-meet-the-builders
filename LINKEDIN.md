@@ -28,7 +28,7 @@ Built on Gemini 3.5 Flash and Flash-Lite on Vertex AI, with Cloud Run, Firestore
 
 Thanks @Hack2skill and @Google Cloud for the programme.
 
-#MeetTheBuilders #1000Builders1000Stories #GenAI #GoogleCloud #Gemini #AIAgents
+#MeetTheBuilders #1000Builders1000Stories #GoogleCloud #Hack2skill #GoogleAI #BuildWithAI #Innovation #StudentBuilders #TechCommunity
 
 ---
 
