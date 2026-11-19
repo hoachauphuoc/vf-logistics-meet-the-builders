@@ -81,5 +81,8 @@ No login required. See README, section "Reproducible testing".
 ## Before submitting
 
 - [x] Public GitHub repository created
-- [ ] Confirm the form's required fields, deadline and badge steps on the Register page
+- [x] Confirm the form's required fields, deadline and badge steps on the Register page
+- [x] Project live on the map, badge earned (`docs/meet-the-builders-badge.webp`)
+- [ ] LinkedIn post published (copy in `LINKEDIN.md`)
+- [ ] Post link submitted to the Hack2skill form
 - [ ] Check the live service still responds (`GET /health`)

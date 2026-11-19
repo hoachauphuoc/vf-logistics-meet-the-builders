@@ -1,6 +1,9 @@
 # VF Logistics — Fraud Agents That Can Only Do What an Operator Allows
 
+<img src="docs/meet-the-builders-badge.webp" alt="Google Gen AI APAC Builder 2026 — featured builder badge" width="160" align="right">
+
 **Programme:** Google Gen AI Academy APAC 2026 — Meet the Builders
+**Status:** Featured builder, live on the Meet the Builders map
 **Live URL:** https://vf-meet-the-builders-304507056252.asia-southeast1.run.app
 **Also see:** [architecture diagram](docs/architecture.png) · [build story](docs/PROJECT_STORY.md) · [API](docs/API.md) · [deploy](docs/DEPLOY.md) · [findings](docs/FINDINGS.md) · [screenshots](docs/screenshots)
 
@@ -711,12 +714,14 @@ original event are painted out of its header.
 │   ├── architecture.html         Diagram source
 │   ├── architecture.png          Architecture diagram
 │   ├── PROJECT_STORY.md          What was built and what it cost to learn
+│   ├── meet-the-builders-badge.webp  Featured builder badge
 │   └── screenshots/              The 13 screenshots, 3000x2000
 ├── Dockerfile                    python:3.11-slim + gunicorn
 ├── cloudbuild.yaml               Cloud Build config
 ├── requirements.txt
 ├── .env.example
 ├── SUBMISSION.md                 Meet the Builders submission copy
+├── LINKEDIN.md                   Badge post and LinkedIn Projects copy
 └── README.md
 ```
 
